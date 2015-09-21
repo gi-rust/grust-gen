@@ -26,6 +26,7 @@ else:
     datadir = "/usr/share"
 __builtin__.__dict__['DATADIR'] = datadir
 
+from giscanner import ast
 from giscanner.transformer import Transformer
 from mako.lookup import TemplateLookup
 import argparse
@@ -50,6 +51,9 @@ class SysCrateWriter(object):
         self._transformer = transformer
         self._options = options
         self._lookup = self._get_template_lookup()
+        self._imports = {}  # name -> ast.Namespace
+        self._transformer.namespace.walk(
+            lambda node, chain: self._prepare_walk(node, chain))
 
     def _get_template_lookup(self):
         srcdir = os.path.dirname(__file__)
@@ -62,8 +66,38 @@ class SysCrateWriter(object):
         options = self._options
         crate_name = (options.crate_name or
                 _sys_crate_name(self._transformer.namespace))
-        result = template.render(crate_name=crate_name)
+        result = template.render(crate_name=crate_name,
+                                 imports=self._imports,
+                                 sys_crate_name=_sys_crate_name)
         output.write(result)
+
+    def _prepare_walk(self, node, chain):
+        if isinstance(node, ast.Callable):
+            self._prepare_callable(node)
+        elif isinstance(node, ast.Compound):
+            self._prepare_compound(node)
+        elif isinstance(node, ast.Constant):
+            self._prepare_type(node.value_type)
+        return True
+
+    def _prepare_type(self, typedesc):
+        if typedesc is None:
+            return;
+        typenode = self._transformer.lookup_typenode(typedesc)
+        if typenode:
+            ns = typenode.namespace
+            if (ns != self._transformer.namespace
+                    and ns.name not in self._imports):
+                self._imports[ns.name] = ns
+
+    def _prepare_callable(self, node):
+        for param in node.parameters:
+            self._prepare_type(param.type)
+        self._prepare_type(node.retval.type)
+
+    def _prepare_compound(self, node):
+        for field in node.fields:
+            self._prepare_type(field.type)
 
 def _create_arg_parser():
     parser = argparse.ArgumentParser(
@@ -91,4 +125,3 @@ if __name__ == '__main__':
     transformer = Transformer.parse_from_gir(args.girfile, args.include_dirs)
     gen = SysCrateWriter(transformer, args)
     gen.write(output)
-

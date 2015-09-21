@@ -3,3 +3,10 @@
 #![crate_name = "${crate_name}"]
 #![crate_type = "lib"]
 
+extern crate gtypes;
+% for name in sorted(imports.iterkeys()):
+<%
+    ns = imports[name]
+%>\
+extern crate ${sys_crate_name(ns)} as ${name.lower()};
+% endfor
