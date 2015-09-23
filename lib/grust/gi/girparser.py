@@ -23,8 +23,11 @@ import os
 from xml.etree.cElementTree import parse
 
 from . import ast
-from .girwriter import COMPATIBLE_GIR_VERSION
 from .collections import OrderedDict
+
+# In the original giscanner modules, this is imported from
+# giscanner.girwriter
+COMPATIBLE_GIR_VERSION = '1.2'
 
 CORE_NS = "http://www.gtk.org/introspection/core/1.0"
 C_NS = "http://www.gtk.org/introspection/c/1.0"
