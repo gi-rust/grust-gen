@@ -52,7 +52,7 @@ class CacheStore(object):
         if 'GI_SCANNER_DISABLE_CACHE' in os.environ:
             return None
         else:
-            cachedir = utils.get_user_cache_dir('g-ir-scanner')
+            cachedir = utils.get_user_cache_dir('grust-gen')
             return cachedir
 
     def _check_cache_version(self):
@@ -76,7 +76,7 @@ class CacheStore(object):
 
         self._clean()
 
-        tmp_fd, tmp_filename = tempfile.mkstemp(prefix='g-ir-scanner-cache-version-')
+        tmp_fd, tmp_filename = tempfile.mkstemp(prefix='grust-gen-cache-version-')
         try:
             with os.fdopen(tmp_fd, 'w') as tmp_file:
                 tmp_file.write(current_hash)
@@ -134,7 +134,7 @@ class CacheStore(object):
         if (os.path.exists(store_filename) and self._cache_is_valid(store_filename, filename)):
             return None
 
-        tmp_fd, tmp_filename = tempfile.mkstemp(prefix='g-ir-scanner-cache-')
+        tmp_fd, tmp_filename = tempfile.mkstemp(prefix='grust-gen-cache-')
         try:
             with os.fdopen(tmp_fd, 'w') as tmp_file:
                 cPickle.dump(data, tmp_file)
