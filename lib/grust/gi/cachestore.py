@@ -49,7 +49,7 @@ class CacheStore(object):
         self._check_cache_version()
 
     def _get_cachedir(self):
-        if 'GI_SCANNER_DISABLE_CACHE' in os.environ:
+        if 'GRUST_GEN_DISABLE_CACHE' in os.environ:
             return None
         else:
             cachedir = utils.get_user_cache_dir('grust-gen')

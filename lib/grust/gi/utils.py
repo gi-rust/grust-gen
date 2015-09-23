@@ -38,7 +38,7 @@ Well-known flags:
 """
     global _debugflags
     if _debugflags is None:
-        _debugflags = os.environ.get('GI_SCANNER_DEBUG', '').split(',')
+        _debugflags = os.environ.get('GRUST_GEN_DEBUG', '').split(',')
         if '' in _debugflags:
             _debugflags.remove('')
     return flag in _debugflags
