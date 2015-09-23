@@ -27,7 +27,7 @@ from . import message
 from . import utils
 from .cachestore import CacheStore
 from .girparser import GIRParser
-from .sourcescanner import (
+from .sourcesymbol import (
     SourceSymbol, ctype_name, CTYPE_POINTER,
     CTYPE_BASIC_TYPE, CTYPE_UNION, CTYPE_ARRAY, CTYPE_TYPEDEF,
     CTYPE_VOID, CTYPE_ENUM, CTYPE_FUNCTION, CTYPE_STRUCT,
