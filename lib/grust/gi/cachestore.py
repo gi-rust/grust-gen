@@ -52,7 +52,8 @@ class CacheStore(object):
         if 'GRUST_GEN_DISABLE_CACHE' in os.environ:
             return None
         else:
-            cachedir = utils.get_user_cache_dir('grust-gen')
+            cachedir = utils.get_user_cache_dir(
+                    os.path.join('grust-gen', 'gi'))
             return cachedir
 
     def _check_cache_version(self):
