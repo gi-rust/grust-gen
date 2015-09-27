@@ -22,6 +22,7 @@ import os
 import sys
 from mako.lookup import TemplateLookup
 from .gi.transformer import Transformer
+from .gi import utils
 from .generators.sys_crate import SysCrateWriter
 from .namemap import NameMapper
 
@@ -52,8 +53,14 @@ def generator_main(template_dir):
     name_mapper = NameMapper()
     if 'GRUST_GEN_TEMPLATE_DIR' in os.environ:
         template_dir = os.environ['GRUST_GEN_TEMPLATE_DIR']
+    if 'GRUST_GEN_DISABLE_CACHE' in os.environ:
+        tmpl_module_dir = None
+    else:
+        tmpl_module_dir = utils.get_user_cache_dir(
+                os.path.join('grust-gen', 'template-modules'))
     tmpl_lookup = TemplateLookup(directories=[template_dir],
-                                 output_encoding='utf-8')
+                                 output_encoding='utf-8',
+                                 module_directory=tmpl_module_dir)
     gen = SysCrateWriter(transformer,
                          name_mapper=name_mapper,
                          template_lookup=tmpl_lookup,
