@@ -9,7 +9,7 @@ class SysCrateWriter(object):
         self._name_mapper = name_mapper
         self._lookup = template_lookup
         self._options = options
-        self._imports = {}  # name -> ast.Namespace
+        self._imports = set()  # ast.Namespace
         self._transformer.namespace.walk(
             lambda node, chain: self._prepare_walk(node, chain))
 
@@ -39,9 +39,8 @@ class SysCrateWriter(object):
         typenode = self._transformer.lookup_typenode(typedesc)
         if typenode:
             ns = typenode.namespace
-            if (ns != self._transformer.namespace
-                    and ns.name not in self._imports):
-                self._imports[ns.name] = ns
+            if (ns != self._transformer.namespace):
+                self._imports.add(ns)
 
     def _prepare_callable(self, node):
         for param in node.parameters:

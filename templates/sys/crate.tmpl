@@ -4,9 +4,6 @@
 #![crate_type = "lib"]
 
 extern crate gtypes;
-% for name in sorted(imports.iterkeys()):
-<%
-    ns = imports[name]
-%>\
-extern crate ${name_mapper.sys_crate_name(ns)} as ${name.lower()};
+% for name, ns in sorted([(ns.name.lower(), ns) for ns in imports]):
+extern crate ${name_mapper.sys_crate_name(ns)} as ${name};
 % endfor
