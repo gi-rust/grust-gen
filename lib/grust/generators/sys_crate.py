@@ -1,4 +1,4 @@
-from grust.gi import ast
+from ..gi import ast
 from mako.lookup import TemplateLookup
 
 class SysCrateWriter(object):
@@ -12,10 +12,6 @@ class SysCrateWriter(object):
         self._imports = set()  # ast.Namespace
         self._transformer.namespace.walk(
             lambda node, chain: self._prepare_walk(node, chain))
-
-    def _get_template_lookup(self, template_dir):
-        return TemplateLookup(directories=[template_dir],
-                              output_encoding='utf-8')
 
     def write(self, output):
         template = self._lookup.get_template('sys/crate.tmpl')
