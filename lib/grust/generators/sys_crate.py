@@ -18,6 +18,7 @@
 # 02110-1301  USA
 
 from ..gi import ast
+from ..errors import RepresentationError
 
 class SysCrateWriter(object):
     """Generator for -sys crates."""
@@ -50,11 +51,25 @@ class SysCrateWriter(object):
     def _prepare_type(self, typedesc):
         if typedesc is None:
             return;
-        typenode = self._transformer.lookup_typenode(typedesc)
-        if typenode:
-            ns = typenode.namespace
-            if (ns != self._transformer.namespace):
-                self._imports.add(ns)
+
+        if isinstance(typedesc, ast.Array):
+            self._prepare_array(typedesc)
+        elif isinstance(typedesc, ast.List):
+            self._resolve_giname(typedesc.name)
+        elif isinstance(typedesc, ast.Map):
+            self._resolve_giname('GLib.HashTable')
+        elif typedesc.target_fundamental:
+            return;
+        elif typedesc.target_giname:
+            self._resolve_giname(typedesc.target_giname)
+        else:
+            raise RepresentationError("can't represent type {}".format(typedesc))
+
+    def _prepare_array(self, typedesc):
+        if typedesc.array_type == ast.Array.C:
+            self._prepare_type(typedesc.element_type)
+        else:
+            self._resolve_giname(typedesc.array_type)
 
     def _prepare_callable(self, node):
         for param in node.parameters:
@@ -64,3 +79,10 @@ class SysCrateWriter(object):
     def _prepare_compound(self, node):
         for field in node.fields:
             self._prepare_type(field.type)
+
+    def _resolve_giname(self, name):
+        typenode = self._transformer.lookup_giname(name)
+        assert typenode, 'reference to undefined type {}'.format(name)
+        ns = typenode.namespace
+        if (ns != self._transformer.namespace):
+            self._imports.add(ns)
