@@ -1,6 +1,6 @@
-# This file is part of Grust, GObject introspection bindings for Rust
+# grust-gen - Rust binding generator for GObject introspection
 #
-# Copyright (C) 2013, 2015  Mikhail Zabaluev <mikhail.zabaluev@gmail.com>
+# Copyright (C) 2015  Mikhail Zabaluev <mikhail.zabaluev@gmail.com>
 #
 # This library is free software; you can redistribute it and/or
 # modify it under the terms of the GNU Lesser General Public

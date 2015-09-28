@@ -1,4 +1,4 @@
-# This file is part of grust-gen, Rust binding generator for GObject introspection
+# grust-gen - Rust binding generator for GObject introspection
 #
 # Copyright (C) 2015  Mikhail Zabaluev <mikhail.zabaluev@gmail.com>
 #
