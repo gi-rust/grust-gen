@@ -18,7 +18,6 @@
 # 02110-1301  USA
 
 from ..gi import ast
-from mako.lookup import TemplateLookup
 
 class SysCrateWriter(object):
     """Generator for -sys crates."""
