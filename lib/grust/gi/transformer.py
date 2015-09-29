@@ -27,14 +27,6 @@ from . import message
 from . import utils
 from .cachestore import CacheStore
 from .girparser import GIRParser
-from .sourcesymbol import (
-    SourceSymbol, ctype_name, CTYPE_POINTER,
-    CTYPE_BASIC_TYPE, CTYPE_UNION, CTYPE_ARRAY, CTYPE_TYPEDEF,
-    CTYPE_VOID, CTYPE_ENUM, CTYPE_FUNCTION, CTYPE_STRUCT,
-    CSYMBOL_TYPE_FUNCTION, CSYMBOL_TYPE_TYPEDEF, CSYMBOL_TYPE_STRUCT,
-    CSYMBOL_TYPE_ENUM, CSYMBOL_TYPE_UNION, CSYMBOL_TYPE_OBJECT,
-    CSYMBOL_TYPE_MEMBER, CSYMBOL_TYPE_ELLIPSIS, CSYMBOL_TYPE_CONST,
-    TYPE_QUALIFIER_CONST, TYPE_QUALIFIER_VOLATILE)
 
 
 class TransformerException(Exception):
@@ -93,37 +85,6 @@ class Transformer(object):
                           positions)
         else:
             self._namespace.append(node)
-
-    def parse(self, symbols):
-        for symbol in symbols:
-            # WORKAROUND
-            # https://bugzilla.gnome.org/show_bug.cgi?id=550616
-            if symbol.ident in ['gst_g_error_get_type']:
-                continue
-
-            try:
-                node = self._traverse_one(symbol)
-            except TransformerException as e:
-                message.warn_symbol(symbol, e)
-                continue
-
-            if node and node.name:
-                self._append_new_node(node)
-            if isinstance(node, ast.Compound) and node.tag_name and \
-                    node.tag_name not in self._tag_ns:
-                self._tag_ns[node.tag_name] = node
-
-        # Run through the tag namespace looking for structs that have not been
-        # promoted into the main namespace. In this case we simply promote them
-        # with their struct tag.
-        for tag_name, struct in self._tag_ns.iteritems():
-            if not struct.name:
-                try:
-                    name = self.strip_identifier(tag_name)
-                    struct.name = name
-                    self._append_new_node(struct)
-                except TransformerException as e:
-                    message.warn_node(node, e)
 
     def set_include_paths(self, paths):
         self._includepaths = list(paths)
@@ -355,31 +316,6 @@ raise ValueError."""
             return '_' + name
         return name
 
-    def _traverse_one(self, symbol, stype=None, parent_symbol=None):
-        assert isinstance(symbol, SourceSymbol), symbol
-
-        if stype is None:
-            stype = symbol.type
-        if stype == CSYMBOL_TYPE_FUNCTION:
-            return self._create_function(symbol)
-        elif stype == CSYMBOL_TYPE_TYPEDEF:
-            return self._create_typedef(symbol)
-        elif stype == CSYMBOL_TYPE_STRUCT:
-            return self._create_tag_ns_compound(ast.Record, symbol)
-        elif stype == CSYMBOL_TYPE_ENUM:
-            return self._create_enum(symbol)
-        elif stype == CSYMBOL_TYPE_MEMBER:
-            return self._create_member(symbol, parent_symbol)
-        elif stype == CSYMBOL_TYPE_UNION:
-            return self._create_tag_ns_compound(ast.Union, symbol)
-        elif stype == CSYMBOL_TYPE_CONST:
-            return self._create_const(symbol)
-        # Ignore variable declarations in the header
-        elif stype == CSYMBOL_TYPE_OBJECT:
-            pass
-        else:
-            print 'transformer: unhandled symbol: %r' % (symbol, )
-
     def _enum_common_prefix(self, symbol):
         def common_prefix(a, b):
             commonparts = []
@@ -433,187 +369,6 @@ raise ValueError."""
         node.add_symbol_reference(symbol)
         return node
 
-    def _create_function(self, symbol):
-        # Drop functions that start with _ very early on here
-        if symbol.ident.startswith('_'):
-            return None
-        parameters = list(self._create_parameters(symbol, symbol.base_type))
-        return_ = self._create_return(symbol.base_type.base_type)
-        name = self._strip_symbol(symbol)
-        func = ast.Function(name, return_, parameters, False, symbol.ident)
-        func.add_symbol_reference(symbol)
-        return func
-
-    def _create_source_type(self, source_type):
-        assert source_type is not None
-        if source_type.type == CTYPE_VOID:
-            value = 'void'
-        elif source_type.type == CTYPE_BASIC_TYPE:
-            value = source_type.name
-        elif source_type.type == CTYPE_TYPEDEF:
-            value = source_type.name
-        elif source_type.type == CTYPE_ARRAY:
-            return self._create_source_type(source_type.base_type)
-        elif source_type.type == CTYPE_POINTER:
-            value = self._create_source_type(source_type.base_type) + '*'
-        else:
-            value = 'gpointer'
-        return value
-
-    def _create_complete_source_type(self, source_type):
-        assert source_type is not None
-
-        const = (source_type.type_qualifier & TYPE_QUALIFIER_CONST)
-        volatile = (source_type.type_qualifier & TYPE_QUALIFIER_VOLATILE)
-
-        if source_type.type == CTYPE_VOID:
-            return 'void'
-        elif source_type.type in [CTYPE_BASIC_TYPE,
-                                  CTYPE_TYPEDEF,
-                                  CTYPE_STRUCT,
-                                  CTYPE_UNION,
-                                  CTYPE_ENUM]:
-            value = source_type.name
-            if not value:
-                value = 'gpointer'
-            if const:
-                value = 'const ' + value
-            if volatile:
-                value = 'volatile ' + value
-        elif source_type.type == CTYPE_ARRAY:
-            return self._create_complete_source_type(source_type.base_type)
-        elif source_type.type == CTYPE_POINTER:
-            value = self._create_complete_source_type(source_type.base_type) + '*'
-            # TODO: handle pointer to function as a special case?
-            if const:
-                value += ' const'
-            if volatile:
-                value += ' volatile'
-
-        else:
-            if const:
-                value = 'gconstpointer'
-            else:
-                value = 'gpointer'
-            if volatile:
-                value = 'volatile ' + value
-            return value
-
-        return value
-
-    def _create_parameters(self, symbol, base_type):
-        for i, child in enumerate(base_type.child_list):
-            yield self._create_parameter(symbol, i, child)
-
-    def _synthesize_union_type(self, symbol, parent_symbol):
-        # Synthesize a named union so that it can be referenced.
-        parent_ident = parent_symbol.ident
-        # FIXME: Should split_ctype_namespaces handle the hidden case?
-        hidden = parent_ident.startswith('_')
-        if hidden:
-            parent_ident = parent_ident[1:]
-        matches = self.split_ctype_namespaces(parent_ident)
-        (namespace, parent_name) = matches[-1]
-        assert namespace and parent_name
-        if hidden:
-            parent_name = '_' + parent_name
-        fake_union = ast.Union("%s__%s__union" % (parent_name, symbol.ident))
-        # _parse_fields accesses <type>.base_type.child_list, so we have to
-        # pass symbol.base_type even though that refers to the array, not the
-        # union.
-        self._parse_fields(symbol.base_type, fake_union)
-        self._append_new_node(fake_union)
-        fake_type = ast.Type(
-            target_giname="%s.%s" % (namespace.name, fake_union.name))
-        return fake_type
-
-    def _create_member(self, symbol, parent_symbol=None):
-        source_type = symbol.base_type
-        if (source_type.type == CTYPE_POINTER
-        and symbol.base_type.base_type.type == CTYPE_FUNCTION):
-            node = self._create_callback(symbol, member=True)
-        elif source_type.type == CTYPE_STRUCT and source_type.name is None:
-            node = self._create_member_compound(ast.Record, symbol)
-        elif source_type.type == CTYPE_UNION and source_type.name is None:
-            node = self._create_member_compound(ast.Union, symbol)
-        else:
-            # Special handling for fields; we don't have annotations on them
-            # to apply later, yet.
-            if source_type.type == CTYPE_ARRAY:
-                complete_ctype = self._create_complete_source_type(source_type)
-                # If the array contains anonymous unions, like in the GValue
-                # struct, we need to handle this specially.  This is necessary
-                # to be able to properly calculate the size of the compound
-                # type (e.g. GValue) that contains this array, see
-                # <https://bugzilla.gnome.org/show_bug.cgi?id=657040>.
-                if (source_type.base_type.type == CTYPE_UNION
-                and source_type.base_type.name is None):
-                    synthesized_type = self._synthesize_union_type(symbol, parent_symbol)
-                    ftype = ast.Array(None, synthesized_type, complete_ctype=complete_ctype)
-                else:
-                    ctype = self._create_source_type(source_type)
-                    canonical_ctype = self._canonicalize_ctype(ctype)
-                    if canonical_ctype[-1] == '*':
-                        derefed_name = canonical_ctype[:-1]
-                    else:
-                        derefed_name = canonical_ctype
-                    if complete_ctype[-1] == '*':
-                        derefed_complete_ctype = complete_ctype[:-1]
-                    else:
-                        derefed_complete_ctype = complete_ctype
-                    from_ctype = self.create_type_from_ctype_string(ctype,
-                                                                    complete_ctype=complete_ctype)
-                    ftype = ast.Array(None, from_ctype,
-                                      ctype=derefed_name,
-                                      complete_ctype=derefed_complete_ctype)
-                child_list = list(symbol.base_type.child_list)
-                ftype.zeroterminated = False
-                if child_list:
-                    ftype.size = child_list[0].const_int
-            else:
-                ftype = self._create_type_from_base(symbol.base_type)
-            # ast.Fields are assumed to be read-write
-            # (except for Objects, see also glibtransformer.py)
-            node = ast.Field(symbol.ident, ftype,
-                             readable=True, writable=True,
-                             bits=symbol.const_int)
-            if symbol.private:
-                node.readable = False
-                node.writable = False
-                node.private = True
-        return node
-
-    def _create_typedef(self, symbol):
-        ctype = symbol.base_type.type
-        if (ctype == CTYPE_POINTER and symbol.base_type.base_type.type == CTYPE_FUNCTION):
-            node = self._create_typedef_callback(symbol)
-        elif (ctype == CTYPE_POINTER and symbol.base_type.base_type.type == CTYPE_STRUCT):
-            node = self._create_typedef_compound(ast.Record, symbol, disguised=True)
-        elif ctype == CTYPE_STRUCT:
-            node = self._create_typedef_compound(ast.Record, symbol)
-        elif ctype == CTYPE_UNION:
-            node = self._create_typedef_compound(ast.Union, symbol)
-        elif ctype == CTYPE_ENUM:
-            return self._create_enum(symbol)
-        elif ctype in (CTYPE_TYPEDEF,
-                       CTYPE_POINTER,
-                       CTYPE_BASIC_TYPE,
-                       CTYPE_VOID):
-            name = self.strip_identifier(symbol.ident)
-            if symbol.base_type.name:
-                complete_ctype = self._create_complete_source_type(symbol.base_type)
-                target = self.create_type_from_ctype_string(symbol.base_type.name,
-                                                            complete_ctype=complete_ctype)
-            else:
-                target = ast.TYPE_ANY
-            if name in ast.type_names:
-                return None
-            return ast.Alias(name, target, ctype=symbol.ident)
-        else:
-            raise NotImplementedError(
-                "symbol %r of type %s" % (symbol.ident, ctype_name(ctype)))
-        return node
-
     def _canonicalize_ctype(self, ctype):
         # First look up the ctype including any pointers;
         # a few type names like 'char*' have their own aliases
@@ -638,15 +393,6 @@ raise ValueError."""
         canonical = canonical_base + '*'
 
         return canonical
-
-    def _create_type_from_base(self, source_type, is_parameter=False, is_return=False):
-        ctype = self._create_source_type(source_type)
-        complete_ctype = self._create_complete_source_type(source_type)
-        const = ((source_type.type == CTYPE_POINTER) and
-                 (source_type.base_type.type_qualifier & TYPE_QUALIFIER_CONST))
-        return self.create_type_from_ctype_string(ctype, is_const=const,
-                                                  is_parameter=is_parameter, is_return=is_return,
-                                                  complete_ctype=complete_ctype)
 
     def _create_bare_container_type(self, base, ctype=None,
                                     is_const=False, complete_ctype=None):
@@ -694,73 +440,6 @@ raise ValueError."""
         if container:
             return container
         return ast.Type(ctype=ctype, is_const=is_const, complete_ctype=complete_ctype)
-
-    def _create_parameter(self, parent_symbol, index, symbol):
-        if symbol.type == CSYMBOL_TYPE_ELLIPSIS:
-            return ast.Parameter('...', ast.Varargs())
-        else:
-            ptype = self._create_type_from_base(symbol.base_type, is_parameter=True)
-
-            if symbol.ident is None:
-                if symbol.base_type and symbol.base_type.type != CTYPE_VOID:
-                    message.warn_symbol(parent_symbol, "missing parameter name; undocumentable")
-                ident = 'arg%d' % (index, )
-            else:
-                ident = symbol.ident
-
-            return ast.Parameter(ident, ptype)
-
-    def _create_return(self, source_type):
-        typeval = self._create_type_from_base(source_type, is_return=True)
-        return ast.Return(typeval)
-
-    def _create_const(self, symbol):
-        if symbol.ident.startswith('_'):
-            return None
-
-        # Don't create constants for non-public things
-        # http://bugzilla.gnome.org/show_bug.cgi?id=572790
-        if (symbol.source_filename is None or not symbol.source_filename.endswith('.h')):
-            return None
-        name = self._strip_symbol(symbol)
-        if symbol.const_string is not None:
-            typeval = ast.TYPE_STRING
-            value = unicode(symbol.const_string, 'utf-8')
-        elif symbol.const_int is not None:
-            if symbol.base_type is not None:
-                typeval = self._create_type_from_base(symbol.base_type)
-            else:
-                typeval = ast.TYPE_INT
-            unaliased = typeval
-            self._resolve_type_from_ctype(unaliased)
-            if typeval.target_giname and typeval.ctype:
-                target = self.lookup_giname(typeval.target_giname)
-                target = self.resolve_aliases(target)
-                if isinstance(target, ast.Type):
-                    unaliased = target
-            if unaliased == ast.TYPE_UINT64:
-                value = str(symbol.const_int % 2 ** 64)
-            elif unaliased == ast.TYPE_UINT32:
-                value = str(symbol.const_int % 2 ** 32)
-            elif unaliased == ast.TYPE_UINT16:
-                value = str(symbol.const_int % 2 ** 16)
-            elif unaliased == ast.TYPE_UINT8:
-                value = str(symbol.const_int % 2 ** 16)
-            else:
-                value = str(symbol.const_int)
-        elif symbol.const_boolean is not None:
-            typeval = ast.TYPE_BOOLEAN
-            value = "true" if symbol.const_boolean else "false"
-        elif symbol.const_double is not None:
-            typeval = ast.TYPE_DOUBLE
-            value = '%f' % (symbol.const_double, )
-        else:
-            raise AssertionError()
-
-        const = ast.Constant(name, typeval, value,
-                             symbol.ident)
-        const.add_symbol_reference(symbol)
-        return const
 
     def _create_typedef_compound(self, compound_class, symbol, disguised=False):
         name = self.strip_identifier(symbol.ident)
@@ -839,45 +518,6 @@ raise ValueError."""
         self._parse_fields(symbol, compound)
         compound.add_symbol_reference(symbol)
         return compound
-
-    def _create_typedef_callback(self, symbol):
-        callback = self._create_callback(symbol)
-        if not callback:
-            return None
-        return callback
-
-    def _parse_fields(self, symbol, compound):
-        for child in symbol.base_type.child_list:
-            child_node = self._traverse_one(child, parent_symbol=symbol)
-            if not child_node:
-                continue
-            if isinstance(child_node, ast.Field):
-                field = child_node
-            else:
-                field = ast.Field(child.ident, None, True, False,
-                              anonymous_node=child_node)
-            compound.fields.append(field)
-
-    def _create_callback(self, symbol, member=False):
-        parameters = list(self._create_parameters(symbol, symbol.base_type.base_type))
-        retval = self._create_return(symbol.base_type.base_type.base_type)
-
-        # Mark the 'user_data' arguments
-        for i, param in enumerate(parameters):
-            if (param.type.target_fundamental == 'gpointer' and param.argname == 'user_data'):
-                param.closure_name = param.argname
-
-        if member:
-            name = symbol.ident
-        elif symbol.ident.find('_') > 0:
-            name = self._strip_symbol(symbol)
-        else:
-            name = self.strip_identifier(symbol.ident)
-        callback = ast.Callback(name, retval, parameters, False,
-                                ctype=symbol.ident)
-        callback.add_symbol_reference(symbol)
-
-        return callback
 
     def create_type_from_user_string(self, typestr):
         """Parse a C type string (as might be given from an
