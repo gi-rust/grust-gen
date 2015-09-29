@@ -7,3 +7,5 @@ extern crate gtypes;
 % for name, ns in sorted([(ns.name.lower(), ns) for ns in imports]):
 extern crate ${name_mapper.sys_crate_name(ns)} as ${name};
 % endfor
+
+use gtypes::*;
