@@ -20,8 +20,10 @@
 import argparse
 import os
 import sys
+import mako
 from mako.lookup import TemplateLookup
 from .gi.transformer import Transformer
+from .gi import message
 from .gi import utils
 from .generators.sys_crate import SysCrateWriter
 from .namemap import NameMapper
@@ -65,6 +67,12 @@ def generator_main(template_dir):
                          name_mapper=name_mapper,
                          template_lookup=tmpl_lookup,
                          options=opts)
-    gen.write(output)
+    try:
+        gen.write(output)
+    except Exception:
+        error_template = mako.exceptions.text_error_template()
+        message.error(error_template.render())
+        # FIXME: clean up the output, which should be a tempfile
+        return 1
     output.close()
     return 0
