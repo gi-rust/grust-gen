@@ -73,7 +73,7 @@ def generator_main(template_dir):
         gen.write(output)
     except Exception:
         error_template = mako.exceptions.text_error_template()
-        message.error(error_template.render())
+        sys.stderr.write(error_template.render())
         # FIXME: clean up the output, which should be a tempfile
         return 1
     output.close()
