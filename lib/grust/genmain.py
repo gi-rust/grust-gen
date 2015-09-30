@@ -51,6 +51,8 @@ def generator_main(template_dir):
     output = opts.output
     if output is None:
         output = open('lib.rs', 'w')
+    logger = message.MessageLogger.get()
+    logger.enable_warnings((message.FATAL, message.ERROR, message.WARNING))
     transformer = Transformer.parse_from_gir(opts.girfile, opts.include_dirs)
     name_mapper = NameMapper()
     if 'GRUST_GEN_TEMPLATE_DIR' in os.environ:
