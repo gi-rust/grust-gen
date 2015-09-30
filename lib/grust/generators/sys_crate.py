@@ -20,6 +20,26 @@
 from ..gi import ast
 from ..errors import RepresentationError
 
+class Crate(object):
+    """Information for a Rust crate.
+
+    Typically, a crate corresponds to a GObject introspection namespace.
+    """
+
+    def __init__(self, name, local_name=None, namespace=None):
+        self.name = name
+        if local_name is not None:
+            self.local_name = local_name
+        else:
+            self.local_name = name
+        self.namespace = namespace
+
+    @classmethod
+    def from_namespace(cls, namespace, name_mapper):
+        name = name_mapper.sys_crate_name(namespace)
+        local_name = namespace.name.lower()  # FIXME: escape keywords
+        return cls(name, local_name, namespace)
+
 class SysCrateWriter(object):
     """Generator for -sys crates."""
 
@@ -28,15 +48,16 @@ class SysCrateWriter(object):
         self._name_mapper = name_mapper
         self._lookup = template_lookup
         self._options = options
-        self._imports = set()  # ast.Namespace
+        self._extern_crates = {}  # namespace name -> Crate
         self._transformer.namespace.walk(
             lambda node, chain: self._prepare_walk(node, chain))
 
     def write(self, output):
+        crate = Crate.from_namespace(self._transformer.namespace,
+                                     self._name_mapper)
         template = self._lookup.get_template('sys/crate.tmpl')
-        result = template.render(name_mapper=self._name_mapper,
-                                 namespace=self._transformer.namespace,
-                                 imports=self._imports)
+        result = template.render(crate=crate,
+                                 extern_crates=self._extern_crates)
         output.write(result)
 
     def _prepare_walk(self, node, chain):
@@ -86,5 +107,7 @@ class SysCrateWriter(object):
         typenode = self._transformer.lookup_giname(name)
         assert typenode, 'reference to undefined type {}'.format(name)
         ns = typenode.namespace
-        if (ns != self._transformer.namespace):
-            self._imports.add(ns)
+        if (ns != self._transformer.namespace
+                and ns.name not in self._extern_crates):
+            crate = Crate.from_namespace(ns, self._name_mapper)
+            self._extern_crates[ns.name] = crate
