@@ -18,34 +18,14 @@
 # 02110-1301  USA
 
 from ..gi import ast
-from ..errors import RepresentationError
-
-class Crate(object):
-    """Information for a Rust crate.
-
-    Typically, a crate corresponds to a GObject introspection namespace.
-    """
-
-    def __init__(self, name, local_name=None, namespace=None):
-        self.name = name
-        if local_name is not None:
-            self.local_name = local_name
-        else:
-            self.local_name = name
-        self.namespace = namespace
-
-    @classmethod
-    def from_namespace(cls, namespace, name_mapper):
-        name = name_mapper.sys_crate_name(namespace)
-        local_name = namespace.name.lower()  # FIXME: escape keywords
-        return cls(name, local_name, namespace)
+from ..mapping import RawMapper, MappingError
 
 class SysCrateWriter(object):
     """Generator for -sys crates."""
 
-    def __init__(self, transformer, name_mapper, template_lookup, options):
+    def __init__(self, transformer, template_lookup, options):
         self._transformer = transformer
-        self._name_mapper = name_mapper
+        self._mapper = RawMapper(transformer.namespace)
         self._lookup = template_lookup
         self._options = options
         self._extern_crates = {}  # namespace name -> Crate
@@ -53,11 +33,8 @@ class SysCrateWriter(object):
             lambda node, chain: self._prepare_walk(node, chain))
 
     def write(self, output):
-        crate = Crate.from_namespace(self._transformer.namespace,
-                                     self._name_mapper)
         template = self._lookup.get_template('sys/crate.tmpl')
-        result = template.render(crate=crate,
-                                 extern_crates=self._extern_crates)
+        result = template.render(mapper=self._mapper)
         output.write(result)
 
     def _prepare_walk(self, node, chain):
@@ -82,11 +59,11 @@ class SysCrateWriter(object):
         elif isinstance(typedesc, ast.Map):
             self._resolve_giname('GLib.HashTable')
         elif typedesc.target_fundamental:
-            return;
+            self._mapper.resolve_fundamental_type(typedesc)
         elif typedesc.target_giname:
             self._resolve_giname(typedesc.target_giname)
         else:
-            raise RepresentationError("can't represent type {}".format(typedesc))
+            raise MappingError("can't represent type {}".format(typedesc))
 
     def _prepare_array(self, typedesc):
         if typedesc.array_type == ast.Array.C:
@@ -106,8 +83,4 @@ class SysCrateWriter(object):
     def _resolve_giname(self, name):
         typenode = self._transformer.lookup_giname(name)
         assert typenode, 'reference to undefined type {}'.format(name)
-        ns = typenode.namespace
-        if (ns != self._transformer.namespace
-                and ns.name not in self._extern_crates):
-            crate = Crate.from_namespace(ns, self._name_mapper)
-            self._extern_crates[ns.name] = crate
+        self._mapper.register_namespace(typenode.namespace)

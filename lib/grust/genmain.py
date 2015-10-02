@@ -26,7 +26,6 @@ from .gi.transformer import Transformer
 from .gi import message
 from .gi import utils
 from .generators.sys_crate import SysCrateWriter
-from .namemap import NameMapper
 
 def _create_arg_parser():
     parser = argparse.ArgumentParser(
@@ -54,7 +53,6 @@ def generator_main(template_dir):
     logger = message.MessageLogger.get()
     logger.enable_warnings((message.FATAL, message.ERROR, message.WARNING))
     transformer = Transformer.parse_from_gir(opts.girfile, opts.include_dirs)
-    name_mapper = NameMapper()
     if 'GRUST_GEN_TEMPLATE_DIR' in os.environ:
         template_dir = os.environ['GRUST_GEN_TEMPLATE_DIR']
     if 'GRUST_GEN_DISABLE_CACHE' in os.environ:
@@ -65,8 +63,7 @@ def generator_main(template_dir):
     tmpl_lookup = TemplateLookup(directories=[template_dir],
                                  output_encoding='utf-8',
                                  module_directory=tmpl_module_dir)
-    gen = SysCrateWriter(transformer,
-                         name_mapper=name_mapper,
+    gen = SysCrateWriter(transformer=transformer,
                          template_lookup=tmpl_lookup,
                          options=opts)
     try:
