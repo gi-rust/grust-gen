@@ -42,6 +42,16 @@ import re
 import string
 from .gi import ast
 
+_ident_pat = re.compile(r'^[A-Za-z_]\w*$')
+
+def is_ident(name):
+    """Checks if the name is a valid Rust identifier.
+
+    Currently, we only regard ASCII identifiers to be valid.
+    If someone spots a non-ASCII identifier in GIR, alert the headquarters.
+    """
+    return bool(_ident_pat.match(name))
+
 _nonalpha_pat = re.compile(r'\W')
 _lowercase_tr = string.maketrans(string.ascii_uppercase,
                                  string.ascii_lowercase)
@@ -76,8 +86,10 @@ class Crate(object):
     """
 
     def __init__(self, name, local_name=None, namespace=None):
+        assert is_ident(name), "crate name '{}' is not an identifier".format(name)
         self.name = name
         if local_name is not None:
+            assert is_ident(local_name), "crate import name '{}' is not an identifier".format(local_name)
             self.local_name = local_name
         else:
             self.local_name = name
