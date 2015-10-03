@@ -27,5 +27,5 @@ ${alias(node)}
 % endfor
 
 <%def name="alias(node)">\
-// Here be type ${node.ctype}, alias for ${node.target}
+pub type ${node.ctype} = ${mapper.map_aliased_type(node)};
 </%def>

@@ -42,6 +42,38 @@ import re
 import string
 from .gi import ast
 
+ffi_basic_types = {}
+for name in ('gpointer', 'gconstpointer', 'gboolean', 'gchar', 'gshort',
+             'gushort', 'gint', 'guint', 'glong', 'gulong', 'gsize', 'gssize',
+             'gintptr', 'guintptr', 'gfloat', 'gdouble', 'GType'):
+    ffi_basic_types[name] = name
+ffi_basic_types['gint8']   = 'i8'
+ffi_basic_types['guint8']  = 'u8'
+ffi_basic_types['gint16']  = 'i16'
+ffi_basic_types['guint16'] = 'u16'
+ffi_basic_types['gint32']  = 'i32'
+ffi_basic_types['guint32'] = 'u32'
+ffi_basic_types['gint64']  = 'i64'
+ffi_basic_types['guint64'] = 'u64'
+
+ffi_basic_types['const gchar*'] = '*const gchar'
+ffi_basic_types['const char*']  = '*const gchar'
+
+# Workaround for gobject-introspection bug #756009
+ffi_basic_types['gchar**'] = '*mut *mut gchar'
+ffi_basic_types['char**']  = '*mut *mut gchar'
+ffi_basic_types['const gchar**'] = '*mut *const gchar'
+ffi_basic_types['const char**']  = '*mut *const gchar'
+ffi_basic_types['const gchar* const*'] = '*const *const gchar'
+ffi_basic_types['const char* const*']  = '*const *const gchar'
+
+libc_types = {}
+for t in ('size_t', 'ssize_t', 'time_t', 'off_t', 'pid_t', 'uid_t', 'gid_t',
+          'dev_t', 'socklen_t'):
+    libc_types[t] = t
+libc_types['long long'] = 'c_longlong'
+libc_types['unsigned long long'] = 'c_ulonglong'
+
 _ident_pat = re.compile(r'^[A-Za-z_]\w*$')
 
 def is_ident(name):
@@ -79,6 +111,11 @@ class MappingError(Exception):
     """
     pass
 
+class ConsistencyError(Exception):
+    """Raised when an inconsistency has been found in introspection data.
+    """
+    pass
+
 class Crate(object):
     """Information for a Rust crate.
 
@@ -94,6 +131,22 @@ class Crate(object):
         else:
             self.local_name = name
         self.namespace = namespace
+
+_ptr_const_patterns = (
+    re.compile(r'^(?P<deref_type>.*[^ ]) +const *\*$'),
+    re.compile(r'^const +(?P<deref_type>.*[^* ]) *\*$')
+)
+_ptr_mut_pattern = re.compile(r'^(?P<deref_type>.*[^ ]) *\*$')
+
+def _unwrap_pointer_ctype(ctype):
+    for pat in _ptr_const_patterns:
+        match = pat.match(ctype)
+        if match:
+            return ('*const ', match.group('deref_type'))
+    match = _ptr_mut_pattern.match(ctype)
+    if match:
+        return ('*mut ', match.group('deref_type'))
+    raise MappingError('expected pointer syntax in C type `{}`'.format(ctype))
 
 class RawMapper(object):
     """State and methods for mapping GI entities to Rust FFI and -sys crates. 
@@ -135,7 +188,8 @@ class RawMapper(object):
         """
         if self._crate_libc is not None:
             return
-        if typedesc in (ast.TYPE_LONG_LONG, ast.TYPE_LONG_ULONG):
+        if (typedesc.ctype in libc_types or
+            typedesc.target_fundamental in libc_types):
             self._crate_libc = Crate('libc')
 
     def extern_crates(self):
@@ -149,3 +203,108 @@ class RawMapper(object):
             yield xc
         if self._crate_libc:
             yield self._crate_libc
+
+    def _map_type(self, typedesc, actual_ctype=None):
+        if actual_ctype is None:
+            actual_ctype = typedesc.ctype
+
+        if isinstance(typedesc, ast.Array):
+            return self._map_array(typedesc, actual_ctype)
+        elif isinstance(typedesc, ast.List):
+            return self._map_list_type(typedesc.name, actual_ctype)
+        elif isinstance(typedesc, ast.Map):
+            return self._map_hash_table(actual_ctype)
+        elif typedesc.target_fundamental:
+            return self._map_fundamental_type(typedesc.target_fundamental,
+                                              actual_ctype)
+        elif typedesc.target_giname:
+            return self._map_introspected_type(typedesc.target_giname,
+                                               actual_ctype)
+        else:
+            raise MappingError('cannot represent type {}'.format(typedesc))
+
+    def _map_fundamental_type(self, typename, ctype):
+        # GIR erases constness on pointer types when mapping to
+        # fundamental types: 'gconstpointer' becomes 'gpointer',
+        # 'const gchar*' becomes either 'utf8' or 'filename'.
+        # We'd like to keep the distinction without looking into AST context,
+        # so look into the actual C type first.
+        # Another lossy mapping performed by GIR scanner is transmutation
+        # of OS-specific types to some guess at their built-in C type
+        # representation. We can do better and resolve those as libc
+        # imports. The same lookup works for 'long long' and
+        # 'unsigned long long'.
+        if ctype in ffi_basic_types:
+            return ffi_basic_types[ctype]
+        elif ctype in libc_types:
+            assert self._libc_crate, 'the fundamental type `{}` should have been resolved first'.format(typename)
+            return '{crate}::{name}'.format(
+                    crate=self._libc_crate.local_name,
+                    name=libc_types[ctype])
+        elif typename in ffi_basic_types:
+            return ffi_basic_types[typename]
+        elif typename in ('utf8', 'filename'):
+            return '*mut gchar'
+        else:
+            raise MappingError('unsupported fundamental type {}'.format(typename))
+
+    def _map_introspected_type(self, giname, ctype):
+        assert is_ident(ctype)
+        if '.' not in giname:
+            crate = self.crate
+        else:
+            ns_name = giname.split('.', 1)[0]
+            if ns_name == self.crate.namespace.name:
+                crate = self.crate
+            elif ns_name in self._extern_crates:
+                crate = self._extern_crates[ns_name]
+            else:
+                raise ConsistencyError('{} does not refer to a defined namespace'.format(giname))
+        if crate == self.crate:
+            return ctype
+        else:
+            return '{crate}::{name}'.format(
+                    crate=crate.local_name, name=ctype)
+
+    def _map_array(self, array, actual_ctype):
+        if array.array_type == ast.Array.C:
+            if actual_ctype in ffi_basic_types:
+                # If the C type for the array is a basic type such as
+                # gpointer, that's all we need for FFI
+                return ffi_basic_types[actual_ctype];
+            (rust_ptr, element_ctype) = _unwrap_pointer_ctype(actual_ctype)
+            return (rust_ptr +
+                    self._map_type(array.element_type, element_ctype))
+        else:
+            (rust_ptr, array_ctype) = _unwrap_pointer_ctype(actual_ctype)
+            assert (array.array_type.startswith('GLib.')
+                    and array_ctype.startswith('G')
+                    and array.array_type[5:] == array_ctype[1:]), \
+                    "the array GI type `{}` and C type `{}` do not match".format(
+                        array.array_type, array_ctype)
+            return (rust_ptr +
+                    self._map_introspected_type(array.array_type, array_ctype))
+
+    def _map_list_type(self, typename, ctype):
+            (rust_ptr, item_ctype) = _unwrap_pointer_ctype(ctype)
+            assert (typename.startswith('GLib.')
+                    and item_ctype.startswith('G')
+                    and typename[5:] == item_ctype[1:]), \
+                    "the list GI type `{}` and C type `{}` do not match".format(
+                        typename, item_ctype)
+            return (rust_ptr +
+                    self._map_introspected_type(typename, item_ctype))
+
+    def _map_hash_table(self, ctype):
+            (rust_ptr, deref_ctype) = _unwrap_pointer_ctype(ctype)
+            assert deref_ctype == 'GHashTable'
+            return (rust_ptr +
+                    self._map_introspected_type('GLib.HashTable', deref_ctype))
+
+    def map_aliased_type(self, alias):
+        """Return the Rust FFI type for the target type of an alias.
+
+        :param alias: an object of :class:`ast.Alias`
+        :return: a string with Rust syntax referring to the type
+        """
+        return self._map_type(alias.target)
