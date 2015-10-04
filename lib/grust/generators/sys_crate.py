@@ -18,7 +18,7 @@
 # 02110-1301  USA
 
 from ..gi import ast
-from ..mapping import RawMapper, MappingError
+from ..mapping import RawMapper
 
 class SysCrateWriter(object):
     """Generator for -sys crates."""
@@ -51,36 +51,13 @@ class SysCrateWriter(object):
     def _prepare_type(self, typedesc):
         if typedesc is None:
             return;
-
-        if isinstance(typedesc, ast.Array):
-            self._prepare_array(typedesc)
-        elif isinstance(typedesc, ast.List):
-            self._resolve_giname(typedesc.name)
-        elif isinstance(typedesc, ast.Map):
-            self._resolve_giname('GLib.HashTable')
-        elif typedesc.target_fundamental:
-            self._mapper.resolve_fundamental_type(typedesc)
-        elif typedesc.target_giname:
-            self._resolve_giname(typedesc.target_giname)
-        else:
-            raise MappingError("can't represent type {}".format(typedesc))
-
-    def _prepare_array(self, typedesc):
-        if typedesc.array_type == ast.Array.C:
-            self._prepare_type(typedesc.element_type)
-        else:
-            self._resolve_giname(typedesc.array_type)
+        self._mapper.resolve_type(typedesc, self._transformer)
 
     def _prepare_callable(self, node):
         for param in node.parameters:
-            self._prepare_type(param.type)
-        self._prepare_type(node.retval.type)
+            self._mapper.resolve_call_signature_type(param, self._transformer)
+        self._mapper.resolve_call_signature_type(node.retval, self._transformer)
 
     def _prepare_compound(self, node):
         for field in node.fields:
             self._prepare_type(field.type)
-
-    def _resolve_giname(self, name):
-        typenode = self._transformer.lookup_giname(name)
-        assert typenode, 'reference to undefined type {}'.format(name)
-        self._mapper.register_namespace(typenode.namespace)

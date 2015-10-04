@@ -56,6 +56,9 @@ ffi_basic_types['guint32'] = 'u32'
 ffi_basic_types['gint64']  = 'i64'
 ffi_basic_types['guint64'] = 'u64'
 
+# GIR introspects char pointers as either 'utf8' or 'filename',
+# and we'd lose constness mapping those to the FFI pointer type
+# '*mut gchar'. Instead, put a direct mapping here.
 ffi_basic_types['const gchar*'] = '*const gchar'
 ffi_basic_types['const char*']  = '*const gchar'
 
@@ -67,6 +70,11 @@ ffi_basic_types['const char**']  = '*mut *const gchar'
 ffi_basic_types['const gchar* const*'] = '*const *const gchar'
 ffi_basic_types['const char* const*']  = '*const *const gchar'
 
+# Another lossy mapping performed by GIR scanner is transmutation
+# of OS-specific types to some guess at their built-in C type
+# representation. We can do better and resolve those as libc
+# imports. The same lookup works for 'long long' and
+# 'unsigned long long'.
 libc_types = {}
 for t in ('size_t', 'ssize_t', 'time_t', 'off_t', 'pid_t', 'uid_t', 'gid_t',
           'dev_t', 'socklen_t'):
@@ -138,15 +146,29 @@ _ptr_const_patterns = (
 )
 _ptr_mut_pattern = re.compile(r'^(?P<deref_type>.*[^ ]) *\*$')
 
-def _unwrap_pointer_ctype(ctype):
-    for pat in _ptr_const_patterns:
-        match = pat.match(ctype)
-        if match:
-            return ('*const ', match.group('deref_type'))
+def _unwrap_pointer_ctype(ctype, allow_const=True):
+    if allow_const:
+        for pat in _ptr_const_patterns:
+            match = pat.match(ctype)
+            if match:
+                return ('*const ', match.group('deref_type'))
     match = _ptr_mut_pattern.match(ctype)
     if match:
         return ('*mut ', match.group('deref_type'))
-    raise MappingError('expected pointer syntax in C type `{}`'.format(ctype))
+
+    if allow_const:
+        message = 'expected pointer syntax in C type `{}`'
+    else:
+        message = 'expected non-const pointer syntax in C type `{}`'
+    raise MappingError(message.format(ctype))
+
+def _normalize_call_signature_ctype(type_container):
+    ctype = type_container.type.ctype
+    if (isinstance(type_container, ast.Parameter)
+        and type_container.direction in (ast.PARAM_DIRECTION_OUT,
+                                         ast.PARAM_DIRECTION_INOUT)):
+        return _unwrap_pointer_ctype(ctype, allow_const=False)[1]
+    return ctype
 
 class RawMapper(object):
     """State and methods for mapping GI entities to Rust FFI and -sys crates. 
@@ -168,7 +190,7 @@ class RawMapper(object):
         local_name = namespace.name.lower()  # FIXME: escape keywords and 'libc'
         return Crate(name, local_name, namespace)
 
-    def register_namespace(self, namespace):
+    def _register_namespace(self, namespace):
         if namespace == self.crate.namespace:
             return
         name = namespace.name
@@ -176,21 +198,82 @@ class RawMapper(object):
             crate = self._create_crate(namespace)
             self._extern_crates[name] = crate
 
-    def resolve_fundamental_type(self, typedesc):
-        """Ensure correct crate imports for a fundamental type.
+    def resolve_type(self, typedesc, transformer):
+        """Resolve type imports for a type description.
 
-        Most fundamental types are mapped to their namesakes in ``gtypes``
-        and so don't need any specific imports provided that the definitions
-        from ``gtypes`` are glob-imported. However, some exotic types,
+        If the type signature refers to a type defined in another
+        namespace, this method ensures that an extern crate record
+        corresponding to the namespace exists in `self`.
+
+        Most fundamental types are mapped to their namesakes defined
+        in crate ``gtypes`` and hence don't need any specific imports,
+        provided that the definitions from ``gtypes`` are glob-imported
+        in the generated code. However, some exotic types,
         such as the Rust representation of ``long long``,
         are imported from ``libc`` as they don't have a conventional
-        GLib name that would prevent potential name conflicts.
+        GLib name that would rule out potential name conflicts.
+
+        This method is not suitable for type descriptions in function
+        parameters or return values due to dependency on the context
+        present there. Use method:`resolve_call_signature_type` with
+        type container objects in the signature of a function.
+
+        :param typedesc: an instance of :class:`ast.Type`
+        :param transformer: the `grust.gi.Transformer` holding the parsed GIR
         """
+        return self._resolve_type_internal(typedesc, typedesc.ctype,
+                                           transformer)
+
+    def resolve_call_signature_type(self, type_container, transformer):
+        """Resolve type imports for a function parameter or a return value.
+
+        This works like :method:`resolve_type`, with the difference that
+        the C type attribute of the GIR typenode may need to be
+        parsed to get at the actual value type. This is the case when the
+        type is given for an output or an inout parameter.
+
+        :param type_container: an instance of :class:`ast.TypeContainer`
+        :param transformer: the `grust.gi.Transformer` holding the parsed GIR
+        """
+        actual_ctype = _normalize_call_signature_ctype(type_container)
+        return self._resolve_type_internal(type_container.type, actual_ctype,
+                                           transformer)
+
+    def _resolve_type_internal(self, typedesc, actual_ctype, transformer):
+        if actual_ctype in ffi_basic_types:
+            return
+
+        if isinstance(typedesc, ast.Array):
+            self._resolve_array(typedesc, transformer)
+        elif isinstance(typedesc, ast.List):
+            self._resolve_giname(typedesc.name, transformer)
+        elif isinstance(typedesc, ast.Map):
+            self._resolve_giname('GLib.HashTable', transformer)
+        elif typedesc.target_fundamental:
+            self._resolve_fundamental_type(typedesc.target_fundamental,
+                                           actual_ctype)
+        elif typedesc.target_giname:
+            self._resolve_giname(typedesc.target_giname, transformer)
+        else:
+            raise MappingError("can't represent type {}".format(typedesc))
+
+    def _resolve_fundamental_type(self, typename, ctype):
         if self._crate_libc is not None:
             return
-        if (typedesc.ctype in libc_types or
-            typedesc.target_fundamental in libc_types):
+        if ctype in libc_types:
             self._crate_libc = Crate('libc')
+
+    def _resolve_giname(self, name, transformer):
+        typenode = transformer.lookup_giname(name)
+        if not typenode:
+            raise ConsistencyError('reference to undefined type {}'.format(name))
+        self._register_namespace(typenode.namespace)
+
+    def _resolve_array(self, typedesc, transformer):
+        if typedesc.array_type == ast.Array.C:
+            self.resolve_type(typedesc.element_type, transformer)
+        else:
+            self._resolve_giname(typedesc.array_type, transformer)
 
     def extern_crates(self):
         """Return an iterator over the extern crate descriptions.
@@ -208,6 +291,11 @@ class RawMapper(object):
         if actual_ctype is None:
             actual_ctype = typedesc.ctype
 
+        if actual_ctype in ffi_basic_types:
+            # If the C type for anything is usable directly in FFI,
+            # that's all we need
+            return ffi_basic_types[actual_ctype];
+
         if isinstance(typedesc, ast.Array):
             return self._map_array(typedesc, actual_ctype)
         elif isinstance(typedesc, ast.List):
@@ -224,19 +312,7 @@ class RawMapper(object):
             raise MappingError('cannot represent type {}'.format(typedesc))
 
     def _map_fundamental_type(self, typename, ctype):
-        # GIR erases constness on pointer types when mapping to
-        # fundamental types: 'gconstpointer' becomes 'gpointer',
-        # 'const gchar*' becomes either 'utf8' or 'filename'.
-        # We'd like to keep the distinction without looking into AST context,
-        # so look into the actual C type first.
-        # Another lossy mapping performed by GIR scanner is transmutation
-        # of OS-specific types to some guess at their built-in C type
-        # representation. We can do better and resolve those as libc
-        # imports. The same lookup works for 'long long' and
-        # 'unsigned long long'.
-        if ctype in ffi_basic_types:
-            return ffi_basic_types[ctype]
-        elif ctype in libc_types:
+        if ctype in libc_types:
             assert self._libc_crate, 'the fundamental type `{}` should have been resolved first'.format(typename)
             return '{crate}::{name}'.format(
                     crate=self._libc_crate.local_name,
@@ -259,7 +335,7 @@ class RawMapper(object):
             elif ns_name in self._extern_crates:
                 crate = self._extern_crates[ns_name]
             else:
-                raise ConsistencyError('{} does not refer to a defined namespace'.format(giname))
+                assert False, '{} does not refer to a defined namespace; has the type been resolved?'.format(giname)
         if crate == self.crate:
             return ctype
         else:
@@ -268,10 +344,6 @@ class RawMapper(object):
 
     def _map_array(self, array, actual_ctype):
         if array.array_type == ast.Array.C:
-            if actual_ctype in ffi_basic_types:
-                # If the C type for the array is a basic type such as
-                # gpointer, that's all we need for FFI
-                return ffi_basic_types[actual_ctype];
             (rust_ptr, element_ctype) = _unwrap_pointer_ctype(actual_ctype)
             return (rust_ptr +
                     self._map_type(array.element_type, element_ctype))
