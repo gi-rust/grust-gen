@@ -359,7 +359,13 @@ class RawMapper(object):
             raise MappingError('unsupported fundamental type "{}"'.format(typename))
 
     def _map_introspected_type(self, giname, ctype):
-        assert is_ident(ctype)
+        if ctype.endswith('*'):
+            (ptr_prefix, value_ctype) = _unwrap_pointer_ctype(ctype)
+        else:
+            ptr_prefix = ''
+            value_ctype = ctype
+        if not is_ident(value_ctype):
+            raise MappingError('C type "{}" does not map to a valid Rust identifier'.format(ctype))
         if '.' not in giname:
             crate = self.crate
         else:
@@ -371,10 +377,11 @@ class RawMapper(object):
             else:
                 assert False, '{} does not refer to a defined namespace; has the type been resolved?'.format(giname)
         if crate == self.crate:
-            return ctype
+            return '{ptr}{name}'.format(
+                    ptr=ptr_prefix, name=value_ctype)
         else:
-            return '{crate}::{name}'.format(
-                    crate=crate.local_name, name=ctype)
+            return '{ptr}{crate}::{name}'.format(
+                    ptr=ptr_prefix, crate=crate.local_name, name=value_ctype)
 
     def _map_array(self, array, actual_ctype):
         if array.array_type == ast.Array.C:
