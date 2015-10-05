@@ -198,7 +198,8 @@ def _normalize_call_signature_ctype(type_container):
     ctype = type_container.type.ctype
     if (isinstance(type_container, ast.Parameter)
         and type_container.direction in (ast.PARAM_DIRECTION_OUT,
-                                         ast.PARAM_DIRECTION_INOUT)):
+                                         ast.PARAM_DIRECTION_INOUT)
+        and not type_container.caller_allocates):
         try:
             return _unwrap_pointer_ctype(ctype, allow_const=False)[1]
         except MappingError as e:
