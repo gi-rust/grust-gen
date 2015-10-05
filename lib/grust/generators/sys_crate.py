@@ -24,18 +24,28 @@ from ..mapping import RawMapper, MappingError
 class SysCrateWriter(object):
     """Generator for -sys crates."""
 
-    def __init__(self, transformer, template_lookup, options):
+    def __init__(self,
+                 transformer,
+                 template_lookup,
+                 options,
+                 gir_filename=None):
         self._transformer = transformer
         self._mapper = RawMapper(transformer.namespace)
         self._lookup = template_lookup
         self._options = options
+        if gir_filename:
+            self._message_positions = set(
+                    (message.Position(filename=gir_filename),))
+        else:
+            self._message_positions = set()
         self._extern_crates = {}  # namespace name -> Crate
         self._transformer.namespace.walk(
             lambda node, chain: self._prepare_walk(node, chain))
 
     def write(self, output):
         template = self._lookup.get_template('sys/crate.tmpl')
-        result = template.render(mapper=self._mapper)
+        result = template.render(mapper=self._mapper,
+                                 message_positions=self._message_positions)
         output.write(result)
 
     def _prepare_walk(self, node, chain):
@@ -49,7 +59,9 @@ class SysCrateWriter(object):
             elif isinstance(node, ast.Constant):
                 self._prepare_type(node.value_type)
         except MappingError as e:
-            message.log_node(message.ERROR, node, e)
+            message.log_node(message.ERROR, node, e,
+                             positions=self._message_positions,
+                             context=node)
             return False
         return True
 

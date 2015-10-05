@@ -71,7 +71,8 @@ def generator_main(template_dir):
                                  module_directory=tmpl_module_dir)
     gen = SysCrateWriter(transformer=transformer,
                          template_lookup=tmpl_lookup,
-                         options=opts)
+                         options=opts,
+                         gir_filename=opts.girfile)
     try:
         gen.write(output)
     except Exception:
