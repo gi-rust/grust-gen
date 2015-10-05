@@ -282,7 +282,7 @@ class RawMapper(object):
             return
 
         if isinstance(typedesc, ast.Array):
-            self._resolve_array(typedesc, transformer)
+            self._resolve_array(typedesc, actual_ctype, transformer)
         elif isinstance(typedesc, ast.List):
             self._resolve_giname(typedesc.name, transformer)
         elif isinstance(typedesc, ast.Map):
@@ -307,9 +307,11 @@ class RawMapper(object):
             raise ConsistencyError('reference to undefined type {}'.format(name))
         self._register_namespace(typenode.namespace)
 
-    def _resolve_array(self, typedesc, transformer):
+    def _resolve_array(self, typedesc, actual_ctype, transformer):
         if typedesc.array_type == ast.Array.C:
-            self.resolve_type(typedesc.element_type, transformer)
+            element_ctype = _unwrap_pointer_ctype(actual_ctype)[1]
+            self._resolve_type_internal(typedesc.element_type, element_ctype,
+                                        transformer)
         else:
             self._resolve_giname(typedesc.array_type, transformer)
 
