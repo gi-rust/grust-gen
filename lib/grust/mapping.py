@@ -82,15 +82,47 @@ for t in ('size_t', 'ssize_t', 'time_t', 'off_t', 'pid_t', 'uid_t', 'gid_t',
 libc_types['long long'] = 'c_longlong'
 libc_types['unsigned long long'] = 'c_ulonglong'
 
-_ident_pat = re.compile(r'^[A-Za-z_]\w*$')
+_ident_pat = re.compile(r'^[A-Za-z_][A-Za-z_0-9]*$')
+
+# Taken from https://github.com/rust-lang/rust/blob/master/src/libsyntax/parse/token.rs
+rust_keywords = [
+    "as", "break", "crate", "else", "enum", "extern", "false", "fn", "for",
+    "if", "impl", "in", "let", "loop", "match", "mod", "move", "mut", "pub",
+    "ref", "return", "static", "self", "Self", "struct", "super", "true",
+    "trait", "type", "unsafe", "use", "while", "continue", "box", "const",
+    "where", "virtual", "proc", "alignof", "become", "offsetof", "priv",
+    "pure", "sizeof", "typeof", "unsized", "yield", "do", "abstract", "final",
+    "override", "macro",
+]
+
+_keyword_pat = re.compile(r'^({})$'.format('|'.join(rust_keywords)))
 
 def is_ident(name):
-    """Checks if the name is a valid Rust identifier.
+    """Check if the name is a valid Rust identifier.
 
     Currently, we only regard ASCII identifiers to be valid.
     If someone spots a non-ASCII identifier in GIR, alert the headquarters.
     """
-    return bool(_ident_pat.match(name))
+    return bool(_ident_pat.match(name)) and not bool(_keyword_pat.match(name))
+
+def sanitize_ident(name):
+    """Modify the name to be a valid Rust identifier.
+
+    :param:`name` must already consist of ASCII alphanumerics and start
+    with an ASCII letter or an underscore, otherwise a `ValueError` is
+    raised.
+    If the name happens to be a Rust keyword, append an underscore.
+
+    This function can be used as a filter in Mako templates.
+
+    :param name: the name string
+    :return: a string with the sanitized name
+    """
+    if not _ident_pat.match(name):
+        raise ValueError('the name "{}" is not a valid Rust identifier'.format(name))
+    if _keyword_pat.match(name):
+        return name + '_'
+    return name
 
 _nonalpha_pat = re.compile(r'\W')
 _lowercase_tr = string.maketrans(string.ascii_uppercase,
@@ -187,7 +219,9 @@ class RawMapper(object):
         # This is a method, to allow per-namespace configuration
         # with overridable names later
         name = sys_crate_name(namespace)
-        local_name = namespace.name.lower()  # FIXME: escape keywords and 'libc'
+        local_name = sanitize_ident(namespace.name.lower())
+        if local_name == 'libc':
+            local_name = 'libc_'
         return Crate(name, local_name, namespace)
 
     def _register_namespace(self, namespace):
