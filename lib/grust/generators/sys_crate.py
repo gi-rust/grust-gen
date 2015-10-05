@@ -49,7 +49,7 @@ class SysCrateWriter(object):
             elif isinstance(node, ast.Constant):
                 self._prepare_type(node.value_type)
         except MappingError as e:
-            message.warn_node(node, e)
+            message.log_node(message.ERROR, node, e)
             return False
         return True
 
