@@ -163,10 +163,10 @@ class Crate(object):
     """
 
     def __init__(self, name, local_name=None, namespace=None):
-        assert is_ident(name), "crate name '{}' is not an identifier".format(name)
+        assert is_ident(name), 'crate name "{}" is not an identifier'.format(name)
         self.name = name
         if local_name is not None:
-            assert is_ident(local_name), "crate import name '{}' is not an identifier".format(local_name)
+            assert is_ident(local_name), 'crate import name "{}" is not an identifier'.format(local_name)
             self.local_name = local_name
         else:
             self.local_name = name
@@ -189,9 +189,9 @@ def _unwrap_pointer_ctype(ctype, allow_const=True):
         return ('*mut ', match.group('deref_type'))
 
     if allow_const:
-        message = 'expected pointer syntax in C type `{}`'
+        message = 'expected pointer syntax in C type "{}"'
     else:
-        message = 'expected non-const pointer syntax in C type `{}`'
+        message = 'expected non-const pointer syntax in C type "{}"'
     raise MappingError(message.format(ctype))
 
 def _normalize_call_signature_ctype(type_container):
@@ -347,7 +347,7 @@ class RawMapper(object):
 
     def _map_fundamental_type(self, typename, ctype):
         if ctype in libc_types:
-            assert self._libc_crate, 'the fundamental type `{}` should have been resolved first'.format(typename)
+            assert self._libc_crate, 'the fundamental type "{}" should have been resolved first'.format(typename)
             return '{crate}::{name}'.format(
                     crate=self._libc_crate.local_name,
                     name=libc_types[ctype])
@@ -356,7 +356,7 @@ class RawMapper(object):
         elif typename in ('utf8', 'filename'):
             return '*mut gchar'
         else:
-            raise MappingError('unsupported fundamental type {}'.format(typename))
+            raise MappingError('unsupported fundamental type "{}"'.format(typename))
 
     def _map_introspected_type(self, giname, ctype):
         assert is_ident(ctype)
@@ -386,7 +386,7 @@ class RawMapper(object):
             assert (array.array_type.startswith('GLib.')
                     and array_ctype.startswith('G')
                     and array.array_type[5:] == array_ctype[1:]), \
-                    "the array GI type `{}` and C type `{}` do not match".format(
+                    'the array GI type "{}" and C type "{}" do not match'.format(
                         array.array_type, array_ctype)
             return (rust_ptr +
                     self._map_introspected_type(array.array_type, array_ctype))
@@ -396,7 +396,7 @@ class RawMapper(object):
             assert (typename.startswith('GLib.')
                     and item_ctype.startswith('G')
                     and typename[5:] == item_ctype[1:]), \
-                    "the list GI type `{}` and C type `{}` do not match".format(
+                    'the list GI type "{}" and C type "{}" do not match'.format(
                         typename, item_ctype)
             return (rust_ptr +
                     self._map_introspected_type(typename, item_ctype))
