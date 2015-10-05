@@ -18,7 +18,8 @@
 # 02110-1301  USA
 
 from ..gi import ast
-from ..mapping import RawMapper
+from ..gi import message
+from ..mapping import RawMapper, MappingError
 
 class SysCrateWriter(object):
     """Generator for -sys crates."""
@@ -38,14 +39,18 @@ class SysCrateWriter(object):
         output.write(result)
 
     def _prepare_walk(self, node, chain):
-        if isinstance(node, ast.Callable):
-            self._prepare_callable(node)
-        elif isinstance(node, ast.Compound):
-            self._prepare_compound(node)
-        elif isinstance(node, ast.Alias):
-            self._prepare_type(node.target)
-        elif isinstance(node, ast.Constant):
-            self._prepare_type(node.value_type)
+        try:
+            if isinstance(node, ast.Callable):
+                self._prepare_callable(node)
+            elif isinstance(node, ast.Compound):
+                self._prepare_compound(node)
+            elif isinstance(node, ast.Alias):
+                self._prepare_type(node.target)
+            elif isinstance(node, ast.Constant):
+                self._prepare_type(node.value_type)
+        except MappingError as e:
+            message.warn_node(node, e)
+            return False
         return True
 
     def _prepare_type(self, typedesc):
