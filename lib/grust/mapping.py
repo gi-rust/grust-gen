@@ -421,3 +421,17 @@ class RawMapper(object):
         :return: a string with Rust syntax referring to the type
         """
         return self._map_type(alias.target)
+
+    def map_field_type(self, field):
+        """Return the Rust FFI type for a field in a compound type.
+
+        :param alias: an object of :class:`ast.Field`
+        :return: a string with Rust syntax referring to the type
+        """
+        if not field.type:
+            raise MappingError('cannot represent anonymous type of field "{}" ({})'.format(
+                    field.name, field.anonymous_node))
+        if field.bits is not None:
+            raise MappingError('cannot represent bit field "{}"'.format(
+                    field.name))
+        return self._map_type(field.type)
