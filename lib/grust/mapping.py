@@ -199,7 +199,11 @@ def _normalize_call_signature_ctype(type_container):
     if (isinstance(type_container, ast.Parameter)
         and type_container.direction in (ast.PARAM_DIRECTION_OUT,
                                          ast.PARAM_DIRECTION_INOUT)):
-        return _unwrap_pointer_ctype(ctype, allow_const=False)[1]
+        try:
+            return _unwrap_pointer_ctype(ctype, allow_const=False)[1]
+        except MappingError as e:
+            message = 'parameter {}: {}'.format(type_container.argname, str(e))
+            raise MappingError(message)
     return ctype
 
 class RawMapper(object):
