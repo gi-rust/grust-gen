@@ -1,6 +1,9 @@
 <%!
   from grust.gi import ast
+  from grust.gi import message
+  from grust.mapping import MappingError, sanitize_ident
 %>\
+<%page args="mapper"/>\
 <%
   namespace = mapper.crate.namespace
 %>\
@@ -20,12 +23,39 @@ extern crate ${xc.name} as ${xc.local_name};
 
 use gtypes::*;
 
-% for node in namespace.names.values():
-%     if isinstance(node, ast.Alias):
-${alias(node)}
-%     endif
-% endfor
-
-<%def name="alias(node)">\
+<%
+  for node in namespace.names.values():
+      node_tmpl = None
+      if isinstance(node, ast.Function):
+          # TODO: collect functions separately and emit in an extern block
+          pass
+      elif isinstance(node, ast.Alias):
+          node_tmpl = alias
+      elif isinstance(node, ast.Record):
+          node_tmpl = record
+      else:
+          message.warn_node(node, 'node type {} is not supported'.format(node.__class__.__name__))
+      endif
+      if node_tmpl:
+          try:
+              # Use capture to cull the whole node from output
+              # if a recoverable exception is raised.
+              context.write(capture(node_tmpl, node))
+          except MappingError as e:
+              message.warn_node(node, e)
+              message.warn_node(node, 'representation omitted')
+%>
+<%def name="alias(node)">
 pub type ${node.ctype} = ${mapper.map_aliased_type(node)};
-</%def>
+</%def>\
+<%def name="record(node)">
+% if len(node.fields) == 0:
+pub enum ${node.ctype} { }
+% else:
+pub struct ${node.ctype} {
+%     for field in node.fields:
+    ${'' if field.private else 'pub '}${field.name | sanitize_ident}: ${mapper.map_field_type(field)},
+%     endfor
+}
+% endif
+</%def>\
