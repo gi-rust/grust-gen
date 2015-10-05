@@ -17,6 +17,8 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 # 02110-1301  USA
 
+from __future__ import print_function
+
 import argparse
 import os
 import sys
@@ -41,6 +43,10 @@ def _create_arg_parser():
     parser.add_argument('--crate-name',
                         help='Name of the generated crate')
     return parser
+
+def error_cleanup(output):
+    output.close()
+    os.remove(output.name)
 
 def generator_main(template_dir):
     arg_parser = _create_arg_parser()
@@ -71,7 +77,19 @@ def generator_main(template_dir):
     except Exception:
         error_template = mako.exceptions.text_error_template()
         sys.stderr.write(error_template.render())
-        # FIXME: clean up the output, which should be a tempfile
+        error_cleanup(output)
         return 1
+
+    error_count = logger.get_error_count()
+    warning_count = logger.get_warning_count()
+    if error_count > 0 or warning_count > 0:
+        print('{:d} error(s), {:d} warning(s)'.format(error_count, warning_count),
+              file=sys.stderr)
+    if error_count > 0:
+        error_cleanup(output)
+        return 2
+
+    # FIXME: output should be a tempfile and replace the
+    # existing file atomically
     output.close()
     return 0
