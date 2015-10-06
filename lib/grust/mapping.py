@@ -218,7 +218,7 @@ def _unwrap_pointer_ctype(ctype, allow_const=True):
         message = 'expected non-const pointer syntax in C type "{}"'
     raise MappingError(message.format(ctype))
 
-_volatile_pattern = re.compile(r'^volatile +(?P<base_type>)')
+_volatile_pattern = re.compile(r'^volatile +(?P<base_type>.*)$')
 
 def _strip_volatile(ctype):
     match = _volatile_pattern.match(ctype)
