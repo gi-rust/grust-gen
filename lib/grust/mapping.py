@@ -234,6 +234,13 @@ def _normalize_call_signature_ctype(type_container):
             raise MappingError(message)
     return _strip_volatile(ctype)
 
+def _is_fixed_size_array(typedesc):
+    return (
+        isinstance(typedesc, ast.Array)
+        and typedesc.array_type == ast.Array.C
+        and typedesc.size is not None
+    )
+
 class RawMapper(object):
     """State and methods for mapping GI entities to Rust FFI and -sys crates. 
 
@@ -351,7 +358,10 @@ class RawMapper(object):
 
     def _resolve_array(self, typedesc, actual_ctype, transformer):
         if typedesc.array_type == ast.Array.C:
-            element_ctype = _unwrap_pointer_ctype(actual_ctype)[1]
+            if typedesc.size is None:
+                element_ctype = _unwrap_pointer_ctype(actual_ctype)[1]
+            else:
+                element_ctype = typedesc.element_type.ctype
             self._resolve_type_internal(typedesc.element_type, element_ctype,
                                         transformer)
         else:
@@ -373,9 +383,11 @@ class RawMapper(object):
         if actual_ctype is None:
             actual_ctype = _strip_volatile(typedesc.ctype)
 
-        if actual_ctype in ffi_basic_types:
+        if (actual_ctype in ffi_basic_types
+            and not _is_fixed_size_array(typedesc)):
             # If the C type for anything is usable directly in FFI,
-            # that's all we need
+            # that's all we need. The C type is bogus on fixed-size arrays
+            # though, see gobject-introspection bug 756122.
             return ffi_basic_types[actual_ctype];
 
         if isinstance(typedesc, ast.Array):
@@ -433,9 +445,14 @@ class RawMapper(object):
 
     def _map_array(self, array, actual_ctype):
         if array.array_type == ast.Array.C:
-            (rust_ptr, element_ctype) = _unwrap_pointer_ctype(actual_ctype)
-            return (rust_ptr +
-                    self._map_type(array.element_type, element_ctype))
+            if array.size is None:
+                (rust_ptr, element_ctype) = _unwrap_pointer_ctype(actual_ctype)
+                return (rust_ptr +
+                        self._map_type(array.element_type, element_ctype))
+            else:
+                return '[{elem_type}; {size}]'.format(
+                        elem_type=self._map_type(array.element_type),
+                        size=array.size)
         else:
             (rust_ptr, array_ctype) = _unwrap_pointer_ctype(actual_ctype)
             assert (array.array_type.startswith('GLib.')
