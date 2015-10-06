@@ -212,6 +212,8 @@ def _strip_volatile(ctype):
 
 def _normalize_call_signature_ctype(type_container):
     ctype = type_container.type.ctype
+    if ctype is None:
+        raise MappingError('parameter {}: C type attribute is missing'.format(type_container.argname))
     if (isinstance(type_container, ast.Parameter)
         and type_container.direction in (ast.PARAM_DIRECTION_OUT,
                                          ast.PARAM_DIRECTION_INOUT)
