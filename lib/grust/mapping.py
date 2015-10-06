@@ -152,8 +152,8 @@ class MappingError(Exception):
     This is a soft failure type; it is expected to be handled by
     logging a warning message and culling the top-level node from
     output. Representation failures that occur at the type resolution
-    phase, however, can more easily result in inconsistent code and
-    tend to indicate serious problems in GIR, so in that phase they
+    pass, however, can more easily result in inconsistent code and
+    tend to indicate serious problems in GIR, so in that pass they
     should be counted as errors, even though the processing may
     continue.
     """
@@ -232,16 +232,17 @@ class RawMapper(object):
     introspection entities to the information on Rust crates, Cargo packages,
     and Rust types generated as FFI bindings for the introspected APIs.
 
-    A mapper object should be used in two phases: first, all types that
-    need to be accounted for in the generated code are *resolved* over
-    an instance of :class:`grust.gi.Transformer` with the parsed includes,
-    using  :method:`resolve_type` or :method:`resolve_call_signature_type`.
-    Then, when the code is generated, *mapping* methods can be called to
-    represent the GIR types in Rust syntax, using the type references
-    resolved in the first phase.
-    :method:`extern_crates` provides an iterator over the extern crate
-    items that need to be emitted to get the type names resolved
-    in the code that uses the mapping methods.
+    A mapper object should be used in two passes over the AST: first,
+    all types that need to be accounted for in the generated code are
+    *resolved* over an instance of :class:`grust.gi.Transformer` with
+    the parsed includes, using  :method:`resolve_type` or
+    :method:`resolve_call_signature_type`.
+    Then, during a code generation pass, *mapping* methods can be called
+    to represent the GIR types in Rust syntax, using the cross-crate
+    references resolved in the first pass.
+    :method:`extern_crates` provides an iterator over the descriptions
+    of ``extern crate`` items that need to be emitted to get the type
+    names resolved in the Rust code generated using the mapping methods.
     """
 
     def __init__(self, namespace):
@@ -270,7 +271,7 @@ class RawMapper(object):
         """Resolve type imports for a type description.
 
         If the type signature refers to a type defined in another
-        namespace, this method ensures that an extern crate record
+        namespace, this method ensures that an ``extern crate`` entry
         corresponding to the namespace exists in `self`.
 
         Most fundamental types are mapped to their namesakes defined
@@ -278,8 +279,9 @@ class RawMapper(object):
         provided that the definitions from ``gtypes`` are glob-imported
         in the generated code. However, some exotic types,
         such as the Rust representation of ``long long``,
-        are imported from ``libc`` as they don't have a conventional
-        GLib name that would rule out potential name conflicts.
+        are disambiguated with the import path of ``libc``, as they
+        don't have a conventional GLib name that would rule out potential
+        namespace collisions.
 
         This method is not suitable for type descriptions in function
         parameters or return values due to dependency on the context
@@ -462,7 +464,7 @@ class RawMapper(object):
     def map_field_type(self, field):
         """Return the Rust FFI type for a field in a compound type.
 
-        :param alias: an object of :class:`ast.Field`
+        :param field: an object of :class:`ast.Field`
         :return: a string with Rust syntax referring to the type
         """
         if not field.type:
