@@ -1,7 +1,8 @@
 <%!
   from grust.gi import ast
   from grust.gi import message
-  from grust.mapping import MappingError, sanitize_ident
+  from grust.mapping import MappingError, sanitize_ident, escape_bytestring
+  from grust.mapping import TYPE_STATIC_BYTES_REF
 %>\
 <%page args="mapper, message_positions"/>\
 <%
@@ -34,6 +35,8 @@ use gtypes::*;
           pass
       elif isinstance(node, ast.Alias):
           node_tmpl = alias
+      elif isinstance(node, ast.Constant):
+          node_tmpl = constant
       elif isinstance(node, (ast.Signal, ast.Property)):
           pass
       elif isinstance(node, (ast.Record, ast.Class)):
@@ -54,6 +57,18 @@ use gtypes::*;
 %>
 <%def name="alias(node)">
 pub type ${node.ctype} = ${mapper.map_aliased_type(node)};
+</%def>\
+<%def name="constant(node)">
+<%
+  value_type = mapper.map_const_value_type(node)
+%>\
+pub const ${node.ctype}: ${value_type} = \
+% if value_type == TYPE_STATIC_BYTES_REF:
+b"${node.value | escape_bytestring}\0"\
+% else:
+${node.value}\
+% endif
+;
 </%def>\
 <%def name="compound(node)">
 % if len(node.fields) == 0:

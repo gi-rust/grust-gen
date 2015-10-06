@@ -54,10 +54,10 @@ class SysCrateWriter(object):
                 self._prepare_callable(node)
             elif isinstance(node, ast.Compound):
                 self._prepare_compound(node)
-            elif isinstance(node, ast.Alias):
-                self._prepare_type(node.target)
             elif isinstance(node, ast.Constant):
                 self._prepare_type(node.value_type)
+            elif isinstance(node, ast.Alias):
+                self._prepare_type(node.target)
             elif isinstance(node, ast.Interface):
                 assert len(node.fields) == 0, \
                     'Fields found in interface {}. Strange, huh?'.format(node.name)

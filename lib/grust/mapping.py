@@ -42,6 +42,8 @@ import re
 import string
 from .gi import ast
 
+TYPE_STATIC_BYTES_REF = "&'static [u8]"
+
 ffi_basic_types = {}
 for name in ('gpointer', 'gconstpointer', 'gboolean', 'gchar', 'gshort',
              'gushort', 'gint', 'guint', 'glong', 'gulong', 'gsize', 'gssize',
@@ -145,6 +147,13 @@ def sys_crate_name(namespace):
     return '{name}_{version}_sys'.format(
             name=_sanitize_crate_name_chars(namespace.name),
             version=_sanitize_crate_name_chars(namespace.version))
+
+_bytestring_escape_pat = re.compile(r'(["\\])')
+
+def escape_bytestring(s):
+    """Escape byte string to have valid syntax for Rust bytestring content.
+    """
+    return _bytestring_escape_pat.sub(r'\\\1', s)
 
 class MappingError(Exception):
     """Raised when something cannot be represented in Rust.
@@ -460,6 +469,19 @@ class RawMapper(object):
         :return: a string with Rust syntax referring to the type
         """
         return self._map_type(alias.target)
+
+    def map_const_value_type(self, constant):
+        """Return the Rust FFI type for the value type of a constant.
+
+        :param constant: an object of :class:`ast.Constant`
+        :return: a string with Rust syntax referring to the type
+        """
+        if constant.value_type.ctype in ('gchar*', 'const gchar*',
+                                         'char*', 'const char*'):
+            # String constants are only defined for convenience, so they
+            # can be of a type compatible with Rust bytestring literals
+            return TYPE_STATIC_BYTES_REF
+        return self._map_type(constant.value_type)
 
     def map_field_type(self, field):
         """Return the Rust FFI type for a field in a compound type.
