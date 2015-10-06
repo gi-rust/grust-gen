@@ -36,6 +36,8 @@ use gtypes::*;
           pass
       elif isinstance(node, ast.Alias):
           node_tmpl = alias
+      elif isinstance(node, ast.Callback):
+          node_tmpl = callback
       elif isinstance(node, ast.Constant):
           node_tmpl = constant
       elif isinstance(node, (ast.Signal, ast.Property)):
@@ -62,6 +64,9 @@ use gtypes::*;
 %>
 <%def name="alias(node)">
 pub type ${node.ctype} = ${mapper.map_aliased_type(node)};
+</%def>\
+<%def name="callback(node)">
+pub type ${node.ctype} = ${mapper.map_callback(node)};
 </%def>\
 <%def name="constant(node)">
 <%

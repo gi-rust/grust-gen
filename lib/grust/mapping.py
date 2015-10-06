@@ -237,7 +237,7 @@ def _normalize_call_signature_ctype(type_container):
         try:
             ctype = _unwrap_pointer_ctype(ctype, allow_const=False)[1]
         except MappingError as e:
-            message = 'parameter {}: {}'.format(type_container.argname, str(e))
+            message = 'parameter {}: {}'.format(type_container.argname, e)
             raise MappingError(message)
     return _strip_volatile(ctype)
 
@@ -514,9 +514,46 @@ class RawMapper(object):
         :return: a string with Rust syntax referring to the type
         """
         if not field.type:
-            raise MappingError('cannot represent anonymous type of field {} ({})'.format(
-                    field.name, field.anonymous_node))
+            node = field.anonymous_node
+            if isinstance(node, ast.Callback):
+                return self.map_callback(node)
+            raise MappingError(
+                    'cannot represent anonymous type of field {} ({})'.format(
+                        field.name, node))
         if field.bits is not None:
             raise MappingError('cannot represent bit field {}'.format(
                     field.name))
         return self._map_type(field.type)
+
+    def map_parameter_type(self, parameter):
+        """Return the Rust FFI type syntax for a function parameter.
+
+        :param parameter: an object of :class:`ast.Parameter`
+        :return: a string with Rust syntax describing the type
+        """
+        assert isinstance(parameter, ast.Parameter)
+        actual_ctype = _normalize_call_signature_ctype(parameter)
+        return self._map_type(parameter.type, actual_ctype)
+
+    def map_return_type(self, retval):
+        """Return the Rust FFI type syntax for a function's return value.
+
+        :param retval: an object of :class:`ast.Return`
+        :return: a string with Rust syntax describing the type
+        """
+        assert isinstance(retval, ast.Return)
+        return self._map_type(retval.type)
+
+    def map_callback(self, callback):
+        """Return the Rust FFI type syntax for a callback node.
+
+        :param callback: an object of :class:`ast.Callback`
+        :return: a string with Rust syntax describing the type
+        """
+        assert isinstance(callback, ast.Callback)
+        param_list = [self.map_parameter_type(param)
+                      for param in callback.parameters]
+        syntax = 'extern "C" fn({})'.format(', '.join(param_list))
+        if callback.retval.type != ast.TYPE_NONE:
+            syntax += ' -> {}'.format(self.map_return_type(callback.retval))
+        return syntax
