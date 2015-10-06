@@ -466,9 +466,9 @@ class RawMapper(object):
         :return: a string with Rust syntax referring to the type
         """
         if not field.type:
-            raise MappingError('cannot represent anonymous type of field "{}" ({})'.format(
+            raise MappingError('cannot represent anonymous type of field {} ({})'.format(
                     field.name, field.anonymous_node))
         if field.bits is not None:
-            raise MappingError('cannot represent bit field "{}"'.format(
+            raise MappingError('cannot represent bit field {}'.format(
                     field.name))
         return self._map_type(field.type)
