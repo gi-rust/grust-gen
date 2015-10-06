@@ -57,6 +57,7 @@ pub type ${node.ctype} = ${mapper.map_aliased_type(node)};
 % if len(node.fields) == 0:
 pub enum ${node.ctype} { }
 % else:
+#[repr(C)]
 pub struct ${node.ctype} {
 %     for field in node.fields:
     ${'' if field.private else 'pub '}${field.name | sanitize_ident}: ${mapper.map_field_type(field)},
