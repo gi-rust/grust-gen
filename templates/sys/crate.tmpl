@@ -36,8 +36,8 @@ use gtypes::*;
           pass
       elif isinstance(node, ast.Alias):
           node_tmpl = alias
-      elif isinstance(node, ast.Record):
-          node_tmpl = record
+      elif isinstance(node, (ast.Record, ast.Class)):
+          node_tmpl = compound
       else:
           warn(node, 'node type {} is not supported'.format(node.__class__.__name__))
       endif
@@ -53,7 +53,7 @@ use gtypes::*;
 <%def name="alias(node)">
 pub type ${node.ctype} = ${mapper.map_aliased_type(node)};
 </%def>\
-<%def name="record(node)">
+<%def name="compound(node)">
 % if len(node.fields) == 0:
 pub enum ${node.ctype} { }
 % else:
