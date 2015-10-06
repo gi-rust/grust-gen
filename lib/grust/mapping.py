@@ -202,6 +202,14 @@ def _unwrap_pointer_ctype(ctype, allow_const=True):
         message = 'expected non-const pointer syntax in C type "{}"'
     raise MappingError(message.format(ctype))
 
+_volatile_pattern = re.compile(r'^volatile +(?P<base_type>)')
+
+def _strip_volatile(ctype):
+    match = _volatile_pattern.match(ctype)
+    if match:
+        return match.group('base_type')
+    return ctype
+
 def _normalize_call_signature_ctype(type_container):
     ctype = type_container.type.ctype
     if (isinstance(type_container, ast.Parameter)
@@ -209,11 +217,11 @@ def _normalize_call_signature_ctype(type_container):
                                          ast.PARAM_DIRECTION_INOUT)
         and not type_container.caller_allocates):
         try:
-            return _unwrap_pointer_ctype(ctype, allow_const=False)[1]
+            ctype = _unwrap_pointer_ctype(ctype, allow_const=False)[1]
         except MappingError as e:
             message = 'parameter {}: {}'.format(type_container.argname, str(e))
             raise MappingError(message)
-    return ctype
+    return _strip_volatile(ctype)
 
 class RawMapper(object):
     """State and methods for mapping GI entities to Rust FFI and -sys crates. 
@@ -279,7 +287,8 @@ class RawMapper(object):
         :param typedesc: an instance of :class:`ast.Type`
         :param transformer: the `grust.gi.Transformer` holding the parsed GIR
         """
-        return self._resolve_type_internal(typedesc, typedesc.ctype,
+        actual_ctype = _strip_volatile(typedesc.ctype)
+        return self._resolve_type_internal(typedesc, actual_ctype,
                                            transformer)
 
     def resolve_call_signature_type(self, type_container, transformer):
@@ -349,7 +358,7 @@ class RawMapper(object):
 
     def _map_type(self, typedesc, actual_ctype=None):
         if actual_ctype is None:
-            actual_ctype = typedesc.ctype
+            actual_ctype = _strip_volatile(typedesc.ctype)
 
         if actual_ctype in ffi_basic_types:
             # If the C type for anything is usable directly in FFI,
