@@ -522,7 +522,9 @@ class RawMapper(object):
         if not field.type:
             node = field.anonymous_node
             if isinstance(node, ast.Callback):
-                return self.map_callback(node)
+                # Function pointer fields can be NULL,
+                # so use the null pointer optimization of Option
+                return 'Option<{}>'.format(self.map_callback(node))
             raise MappingError(
                     'cannot represent anonymous type of field {} ({})'.format(
                         field.name, node))
