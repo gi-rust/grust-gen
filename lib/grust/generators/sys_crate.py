@@ -71,6 +71,8 @@ class SysCrateWriter(object):
         self._mapper.resolve_type(typedesc, self._transformer)
 
     def _prepare_callable(self, node):
+        if not isinstance(node, (ast.Function, ast.Callback, ast.VFunction)):
+            return
         for param in node.parameters:
             self._mapper.resolve_call_signature_type(param, self._transformer)
         self._mapper.resolve_call_signature_type(node.retval, self._transformer)

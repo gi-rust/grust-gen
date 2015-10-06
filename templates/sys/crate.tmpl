@@ -32,6 +32,8 @@ use gtypes::*;
       if isinstance(node, ast.Function):
           # TODO: collect functions separately and emit in an extern block
           pass
+      elif isinstance(node, ast.Signal):
+          pass
       elif isinstance(node, ast.Alias):
           node_tmpl = alias
       elif isinstance(node, ast.Record):
