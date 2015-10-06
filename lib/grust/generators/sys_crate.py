@@ -58,6 +58,9 @@ class SysCrateWriter(object):
                 self._prepare_type(node.target)
             elif isinstance(node, ast.Constant):
                 self._prepare_type(node.value_type)
+            elif isinstance(node, ast.Interface):
+                assert len(node.fields) == 0, \
+                    'Fields found in interface {}. Strange, huh?'.format(node.name)
         except MappingError as e:
             message.log_node(message.ERROR, node, e,
                              positions=self._message_positions,

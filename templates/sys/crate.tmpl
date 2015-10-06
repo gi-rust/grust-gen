@@ -38,6 +38,8 @@ use gtypes::*;
           node_tmpl = alias
       elif isinstance(node, (ast.Record, ast.Class)):
           node_tmpl = compound
+      elif isinstance(node, ast.Interface):
+          node_tmpl = interface
       else:
           warn(node, 'node type {} is not supported'.format(node.__class__.__name__))
       endif
@@ -64,4 +66,7 @@ pub struct ${node.ctype} {
 %     endfor
 }
 % endif
+</%def>\
+<%def name="interface(node)">
+pub enum ${node.ctype} { }
 </%def>\
