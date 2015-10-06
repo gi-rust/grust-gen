@@ -426,12 +426,18 @@ class RawMapper(object):
             raise MappingError('unsupported fundamental type "{}"'.format(typename))
 
     def _map_introspected_type(self, giname, ctype):
-        if ctype.endswith('*'):
-            (ptr_prefix, value_ctype) = _unwrap_pointer_ctype(ctype)
-        else:
-            ptr_prefix = ''
-            value_ctype = ctype
-        if not is_ident(value_ctype):
+        # There may be up to two levels of pointer indirection:
+        # one when the type value is a pointer, and possibly another one
+        # when an output parameter lacks annotation, which is always the
+        # case with anonymous callbacks.
+        ptr_prefix = ''
+        for _ in range(2):
+            if ctype.endswith('*'):
+                (ptr_layer, ctype) = _unwrap_pointer_ctype(ctype)
+                ptr_prefix += ptr_layer
+            else:
+                break
+        if not is_ident(ctype):
             raise MappingError('C type "{}" does not map to a valid Rust identifier'.format(ctype))
         if '.' not in giname:
             crate = self.crate
@@ -445,10 +451,10 @@ class RawMapper(object):
                 assert False, '{} does not refer to a defined namespace; has the type been resolved?'.format(giname)
         if crate == self.crate:
             return '{ptr}{name}'.format(
-                    ptr=ptr_prefix, name=value_ctype)
+                    ptr=ptr_prefix, name=ctype)
         else:
             return '{ptr}{crate}::{name}'.format(
-                    ptr=ptr_prefix, crate=crate.local_name, name=value_ctype)
+                    ptr=ptr_prefix, crate=crate.local_name, name=ctype)
 
     def _map_array(self, array, actual_ctype):
         if array.array_type == ast.Array.C:
