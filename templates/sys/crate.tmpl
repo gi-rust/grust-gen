@@ -1,7 +1,8 @@
 <%!
   from grust.gi import ast
   from grust.gi import message
-  from grust.mapping import MappingError, sanitize_ident, escape_bytestring
+  from grust.mapping import MappingError
+  from grust.mapping import sanitize_ident, to_camel_case, escape_bytestring
   from grust.mapping import TYPE_STATIC_BYTES_REF
 %>\
 <%page args="mapper, message_positions"/>\
@@ -43,6 +44,10 @@ use gtypes::*;
           node_tmpl = compound
       elif isinstance(node, ast.Interface):
           node_tmpl = interface
+      elif isinstance(node, ast.Enum):
+          node_tmpl = enum
+      elif isinstance(node, ast.Bitfield):
+          node_tmpl = flags
       else:
           warn(node, 'node type {} is not supported'.format(node.__class__.__name__))
       endif
@@ -84,4 +89,24 @@ pub struct ${node.ctype} {
 </%def>\
 <%def name="interface(node)">
 pub enum ${node.ctype} { }
+</%def>\
+<%def name="_base_enum(node)">\
+#[repr(C)]
+pub enum ${node.ctype} {
+% for member in node.members:
+    ${member.name | to_camel_case} = ${member.value},
+% endfor
+}
+</%def>\
+<%def name="enum(node)">
+${_base_enum(node)}
+% for member in node.members:
+pub const ${member.symbol}: ${node.ctype} = ${node.ctype}::${member.name | to_camel_case};
+% endfor
+</%def>\
+<%def name="flags(node)">
+${_base_enum(node)}
+% for member in node.members:
+pub const ${member.symbol}: guint = ${member.value};
+% endfor
 </%def>\

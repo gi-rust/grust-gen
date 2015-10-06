@@ -126,6 +126,13 @@ def sanitize_ident(name):
         return name + '_'
     return name
 
+_snake_break_pat = re.compile(r'(^|_)([a-zA-Z])')
+
+def to_camel_case(name):
+    """Converts a snake_case name to CamelCase.
+    """
+    return _snake_break_pat.sub(lambda m: m.group(2).upper(), name)
+
 _nonalpha_pat = re.compile(r'\W')
 _lowercase_tr = string.maketrans(string.ascii_uppercase,
                                  string.ascii_lowercase)
