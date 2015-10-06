@@ -148,6 +148,14 @@ def sys_crate_name(namespace):
 
 class MappingError(Exception):
     """Raised when something cannot be represented in Rust.
+
+    This is a soft failure type; it is expected to be handled by
+    logging a warning message and culling the top-level node from
+    output. Representation failures that occur at the type resolution
+    phase, however, can more easily result in inconsistent code and
+    tend to indicate serious problems in GIR, so in that phase they
+    should be counted as errors, even though the processing may
+    continue.
     """
     pass
 
@@ -213,6 +221,17 @@ class RawMapper(object):
     This class provides a configurable mapping from GObject
     introspection entities to the information on Rust crates, Cargo packages,
     and Rust types generated as FFI bindings for the introspected APIs.
+
+    A mapper object should be used in two phases: first, all types that
+    need to be accounted for in the generated code are *resolved* over
+    an instance of :class:`grust.gi.Transformer` with the parsed includes,
+    using  :method:`resolve_type` or :method:`resolve_call_signature_type`.
+    Then, when the code is generated, *mapping* methods can be called to
+    represent the GIR types in Rust syntax, using the type references
+    resolved in the first phase.
+    :method:`extern_crates` provides an iterator over the extern crate
+    items that need to be emitted to get the type names resolved
+    in the code that uses the mapping methods.
     """
 
     def __init__(self, namespace):
