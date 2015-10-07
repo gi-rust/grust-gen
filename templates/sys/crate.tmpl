@@ -127,7 +127,7 @@ ${_base_enum(node)}
 pub const ${member.symbol}: guint = ${member.value};
 % endfor
 </%def>\
-<%def name="function(node)">
+<%def name="function(node)">\
 <%
       param_list = ['{name}: {type}'.format(
                         name=param.argname,
