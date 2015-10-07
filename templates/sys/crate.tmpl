@@ -63,7 +63,17 @@ use gtypes::*;
       endif
       if node_tmpl:
           emit(node_tmpl, node)
+
+  functions = sorted([node for node in namespace.symbols.values()
+                      if isinstance(node, ast.Function)],
+                     key=lambda node: node.symbol)
 %>
+extern {
+<%
+  for funcnode in functions:
+      emit(function, funcnode)
+%>\
+}
 <%def name="alias(node)">
 pub type ${node.ctype} = ${mapper.map_aliased_type(node)};
 </%def>\
@@ -116,4 +126,17 @@ ${_base_enum(node)}
 % for member in node.members:
 pub const ${member.symbol}: guint = ${member.value};
 % endfor
+</%def>\
+<%def name="function(node)">
+<%
+      param_list = ['{name}: {type}'.format(
+                        name=param.argname,
+                        type=mapper.map_parameter_type(param))
+                    for param in node.all_parameters]
+%>\
+    pub fn ${node.symbol}(${', '.join(param_list)})\
+    % if node.retval.type != ast.TYPE_NONE:
+ -> ${mapper.map_return_type(node.retval)}\
+    % endif
+;
 </%def>\
