@@ -314,6 +314,7 @@ class RawMapper(object):
         :param typedesc: an instance of :class:`ast.Type`
         :param transformer: the `grust.gi.Transformer` holding the parsed GIR
         """
+        assert isinstance(typedesc, ast.Type)
         actual_ctype = _strip_volatile(typedesc.ctype)
         return self._resolve_type_internal(typedesc, actual_ctype,
                                            transformer)
@@ -329,6 +330,7 @@ class RawMapper(object):
         :param type_container: an instance of :class:`ast.TypeContainer`
         :param transformer: the `grust.gi.Transformer` holding the parsed GIR
         """
+        assert isinstance(type_container, ast.TypeContainer)
         actual_ctype = _normalize_call_signature_ctype(type_container)
         return self._resolve_type_internal(type_container.type, actual_ctype,
                                            transformer)
@@ -498,6 +500,7 @@ class RawMapper(object):
         :param alias: an object of :class:`ast.Alias`
         :return: a string with Rust syntax referring to the type
         """
+        assert isinstance(alias, ast.Alias)
         return self._map_type(alias.target)
 
     def map_const_value_type(self, constant):
@@ -506,6 +509,7 @@ class RawMapper(object):
         :param constant: an object of :class:`ast.Constant`
         :return: a string with Rust syntax referring to the type
         """
+        assert isinstance(constant, ast.Constant)
         if constant.value_type.ctype in ('gchar*', 'const gchar*',
                                          'char*', 'const char*'):
             # String constants are only defined for convenience, so they
@@ -519,6 +523,7 @@ class RawMapper(object):
         :param field: an object of :class:`ast.Field`
         :return: a string with Rust syntax referring to the type
         """
+        assert isinstance(field, ast.Field)
         if not field.type:
             node = field.anonymous_node
             if isinstance(node, ast.Callback):
@@ -540,6 +545,8 @@ class RawMapper(object):
         :return: a string with Rust syntax describing the type
         """
         assert isinstance(parameter, ast.Parameter)
+        if isinstance(parameter.type, ast.Varargs):
+            return '...'
         actual_ctype = _normalize_call_signature_ctype(parameter)
         return self._map_type(parameter.type, actual_ctype)
 
