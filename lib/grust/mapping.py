@@ -389,8 +389,9 @@ class RawMapper(object):
             yield self._crate_libc
 
     def _map_type(self, typedesc, actual_ctype=None):
-        if actual_ctype is None:
+        if actual_ctype is None and typedesc.ctype is not None:
             actual_ctype = _strip_volatile(typedesc.ctype)
+        assert actual_ctype or typedesc.target_giname, 'C type not found for {!r}'.format(typedesc)
 
         if (actual_ctype in ffi_basic_types
             and not _is_fixed_size_array(typedesc)):
@@ -428,17 +429,30 @@ class RawMapper(object):
             raise MappingError('unsupported fundamental type "{}"'.format(typename))
 
     def _map_introspected_type(self, giname, ctype):
-        # There may be up to two levels of pointer indirection:
-        # one when the type value is a pointer, and possibly another one
-        # when an output parameter lacks annotation, which is always the
-        # case with anonymous callbacks.
         ptr_prefix = ''
-        for _ in range(2):
-            if ctype.endswith('*'):
-                (ptr_layer, ctype) = _unwrap_pointer_ctype(ctype)
-                ptr_prefix += ptr_layer
+        if ctype is None:
+            # This must be a node with a generated name, injected by
+            # g-ir-scanner ro represent an anonymous struct or union
+            # in a structure member definition.
+            # The generated name should be prefixed and unique enough to
+            # avoid namespace conflicts, so just use it as a stand-in.
+            if '.' in giname:
+                ns_name, local_name = giname.split('.', 1)
+                assert ns_name == self.crate.namespace.name
+                ctype = local_name
             else:
-                break
+                ctype = giname
+        else:
+            # There may be up to two levels of pointer indirection:
+            # one when the type value is a pointer, and possibly another one
+            # when an output parameter lacks annotation, which is always the
+            # case with callbacks.
+            for _ in range(2):
+                if ctype.endswith('*'):
+                    (ptr_layer, ctype) = _unwrap_pointer_ctype(ctype)
+                    ptr_prefix += ptr_layer
+                else:
+                    break
         if not is_ident(ctype):
             raise MappingError('C type "{}" does not map to a valid Rust identifier'.format(ctype))
         if '.' not in giname:
