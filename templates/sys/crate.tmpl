@@ -129,13 +129,18 @@ pub const ${member.symbol}: guint = ${member.value};
 </%def>\
 <%def name="function(node)">\
 <%
-      if any([param.type == ast.TYPE_VALIST for param in node.parameters]):
-          # Functions with a va_list parameter are usable only in C
-          return ''
-      param_list = ['{name}: {type}'.format(
+  if any(param.type == ast.TYPE_VALIST for param in node.parameters):
+      # Functions with a va_list parameter are usable only in C
+      return ''
+  parameters = list(node.all_parameters)
+  param_list = []
+  if len(parameters) > 0 and isinstance(parameters[-1].type, ast.Varargs):
+      param_list = ['...']
+      del parameters[-1]
+  param_list[:0] = ['{name}: {type}'.format(
                         name=param.argname,
                         type=mapper.map_parameter_type(param))
-                    for param in node.all_parameters]
+                    for param in parameters]
 %>\
     pub fn ${node.symbol}(${', '.join(param_list)})\
     % if node.retval.type != ast.TYPE_NONE:

@@ -545,8 +545,6 @@ class RawMapper(object):
         :return: a string with Rust syntax describing the type
         """
         assert isinstance(parameter, ast.Parameter)
-        if isinstance(parameter.type, ast.Varargs):
-            return '...'
         actual_ctype = _normalize_call_signature_ctype(parameter)
         return self._map_type(parameter.type, actual_ctype)
 
