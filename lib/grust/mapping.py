@@ -47,7 +47,7 @@ TYPE_STATIC_BYTES_REF = "&'static [u8]"
 ffi_basic_types = {}
 for name in ('gpointer', 'gconstpointer', 'gboolean', 'gchar', 'gshort',
              'gushort', 'gint', 'guint', 'glong', 'gulong', 'gsize', 'gssize',
-             'gintptr', 'guintptr', 'gfloat', 'gdouble', 'GType'):
+             'gintptr', 'guintptr', 'gfloat', 'gdouble', 'gunichar', 'GType'):
     ffi_basic_types[name] = name
 ffi_basic_types['gint8']   = 'i8'
 ffi_basic_types['guint8']  = 'u8'
