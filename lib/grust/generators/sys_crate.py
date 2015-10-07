@@ -38,7 +38,6 @@ class SysCrateWriter(object):
                     (message.Position(filename=gir_filename),))
         else:
             self._message_positions = set()
-        self._extern_crates = {}  # namespace name -> Crate
         self._transformer.namespace.walk(
             lambda node, chain: self._prepare_walk(node, chain))
 
