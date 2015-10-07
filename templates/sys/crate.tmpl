@@ -129,6 +129,9 @@ pub const ${member.symbol}: guint = ${member.value};
 </%def>\
 <%def name="function(node)">\
 <%
+      if any([param.type == ast.TYPE_VALIST for param in node.parameters]):
+          # Functions with a va_list parameter are usable only in C
+          return ''
       param_list = ['{name}: {type}'.format(
                         name=param.argname,
                         type=mapper.map_parameter_type(param))
