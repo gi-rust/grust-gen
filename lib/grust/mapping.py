@@ -414,9 +414,9 @@ class RawMapper(object):
 
     def _map_fundamental_type(self, typename, ctype):
         if ctype in libc_types:
-            assert self._libc_crate, 'the fundamental type "{}" should have been resolved first'.format(typename)
+            assert self._crate_libc, 'the fundamental type "{}" should have been resolved first'.format(typename)
             return '{crate}::{name}'.format(
-                    crate=self._libc_crate.local_name,
+                    crate=self._crate_libc.local_name,
                     name=libc_types[ctype])
         elif typename in ffi_basic_types:
             return ffi_basic_types[typename]
