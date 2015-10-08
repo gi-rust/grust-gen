@@ -40,7 +40,6 @@ use gtypes::*;
   for node in namespace.names.values():
       node_tmpl = None
       if isinstance(node, ast.Function):
-          # TODO: collect functions separately and emit in an extern block
           pass
       elif isinstance(node, ast.Alias):
           node_tmpl = alias
