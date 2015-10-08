@@ -86,7 +86,7 @@ pub type ${node.ctype} = ${mapper.map_callback(node)};
 %>\
 pub const ${node.ctype}: ${value_type} = \
 % if value_type == TYPE_STATIC_BYTES_REF:
-b"${node.value | escape_bytestring}\0"\
+b"${escape_bytestring(node.value)}\0"\
 % else:
 ${node.value}\
 % endif
@@ -99,7 +99,7 @@ pub enum ${node.ctype} { }
 #[repr(C)]
 pub struct ${node.ctype} {
 %     for field in node.fields:
-    ${'' if field.private else 'pub '}${field.name | sanitize_ident}: ${mapper.map_field_type(field)},
+    ${'' if field.private else 'pub '}${sanitize_ident(field.name)}: ${mapper.map_field_type(field)},
 %     endfor
 }
 % endif
@@ -111,14 +111,14 @@ pub enum ${node.ctype} { }
 #[repr(C)]
 pub enum ${node.ctype} {
 % for member in node.members:
-    ${member.name | to_camel_case} = ${member.value},
+    ${to_camel_case(member.name)} = ${member.value},
 % endfor
 }
 </%def>\
 <%def name="enum(node)">
 ${_base_enum(node)}
 % for member in node.members:
-pub const ${member.symbol}: ${node.ctype} = ${node.ctype}::${member.name | to_camel_case};
+pub const ${member.symbol}: ${node.ctype} = ${node.ctype}::${to_camel_case(member.name)};
 % endfor
 </%def>\
 <%def name="flags(node)">
