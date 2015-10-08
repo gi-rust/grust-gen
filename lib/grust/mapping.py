@@ -154,9 +154,7 @@ def to_camel_case(name):
             lambda m: m.group(1) + ascii_toupper(m.group(2)), name)
     if name[:1].isdigit():
         name = '_' + name
-    if _keyword_pat.match(name):
-        name += '_'
-    return name
+    return sanitize_ident(name)
 
 _nonalpha_pat = re.compile(r'\W')
 
