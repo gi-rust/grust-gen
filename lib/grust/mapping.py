@@ -258,12 +258,12 @@ class RawMapper(object):
     A mapper object should be used in two passes over the AST: first,
     all types that need to be accounted for in the generated code are
     *resolved* over an instance of :class:`grust.gi.Transformer` with
-    the parsed includes, using  :method:`resolve_type` or
-    :method:`resolve_call_signature_type`.
+    the parsed includes, using  :meth:`resolve_type` or
+    :meth:`resolve_call_signature_type`.
     Then, during a code generation pass, *mapping* methods can be called
     to represent the GIR types in Rust syntax, using the cross-crate
     references resolved in the first pass.
-    :method:`extern_crates` provides an iterator over the descriptions
+    :meth:`extern_crates` provides an iterator over the descriptions
     of ``extern crate`` items that need to be emitted to get the type
     names resolved in the Rust code generated using the mapping methods.
     """
@@ -312,7 +312,7 @@ class RawMapper(object):
         type container objects in the signature of a function.
 
         :param typedesc: an instance of :class:`ast.Type`
-        :param transformer: the `grust.gi.Transformer` holding the parsed GIR
+        :param transformer: the :class:`~grust.gi.Transformer` object holding the parsed GIR
         """
         assert isinstance(typedesc, ast.Type)
         actual_ctype = _strip_volatile(typedesc.ctype)
@@ -322,13 +322,13 @@ class RawMapper(object):
     def resolve_call_signature_type(self, type_container, transformer):
         """Resolve type imports for a function parameter or a return value.
 
-        This works like :method:`resolve_type`, with the difference that
+        This works like :meth:`resolve_type`, with the difference that
         the C type attribute of the GIR typenode may need to be
         parsed to get at the actual value type. This is the case when the
         type is given for an output or an inout parameter.
 
         :param type_container: an instance of :class:`ast.TypeContainer`
-        :param transformer: the `grust.gi.Transformer` holding the parsed GIR
+        :param transformer: the :class:`~grust.gi.Transformer` object holding the parsed GIR
         """
         assert isinstance(type_container, ast.TypeContainer)
         actual_ctype = _normalize_call_signature_ctype(type_container)
