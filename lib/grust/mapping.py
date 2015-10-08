@@ -388,7 +388,26 @@ class RawMapper(object):
         if self._crate_libc:
             yield self._crate_libc
 
-    def _map_type(self, typedesc, actual_ctype=None):
+    def _lookup_giname(self, giname):
+        if '.' in giname:
+            ns_name, nqname = giname.split('.', 1)
+            if ns_name == self.crate.namespace.name:
+                crate = self.crate
+            else:
+                assert ns_name in self._extern_crates, (
+                        '{} refers to an unresolved namespace;'
+                        + ' has the type been resolved?'
+                        ).format(giname)
+                crate = self._extern_crates[ns_name]
+        else:
+            crate = self.crate
+            nqname = giname
+        assert nqname in crate.namespace.names, (
+                '{} is not found in namespace {}'
+                ).format(nqname, crate.namespace.name)
+        return (crate, nqname)
+
+    def _map_type(self, typedesc, actual_ctype=None, nullable=False):
         if actual_ctype is None and typedesc.ctype is not None:
             actual_ctype = _strip_volatile(typedesc.ctype)
         assert actual_ctype or typedesc.target_giname, 'C type not found for {!r}'.format(typedesc)
@@ -411,7 +430,8 @@ class RawMapper(object):
                                               actual_ctype)
         elif typedesc.target_giname:
             return self._map_introspected_type(typedesc.target_giname,
-                                               actual_ctype)
+                                               actual_ctype,
+                                               nullable=nullable)
         else:
             raise MappingError('cannot represent type {}'.format(typedesc))
 
@@ -428,25 +448,22 @@ class RawMapper(object):
         else:
             raise MappingError('unsupported fundamental type "{}"'.format(typename))
 
-    def _map_introspected_type(self, giname, ctype):
+    def _map_introspected_type(self, giname, ctype, nullable=False):
+        crate, name = self._lookup_giname(giname)
         ptr_prefix = ''
+
         if ctype is None:
             # This must be a node with a generated name, injected by
             # g-ir-scanner ro represent an anonymous struct or union
             # in a structure member definition.
             # The generated name should be prefixed and unique enough to
             # avoid namespace conflicts, so just use it as a stand-in.
-            if '.' in giname:
-                ns_name, local_name = giname.split('.', 1)
-                assert ns_name == self.crate.namespace.name
-                ctype = local_name
-            else:
-                ctype = giname
+            ctype = name
         else:
             # There may be up to two levels of pointer indirection:
-            # one when the type value is a pointer, and possibly another one
-            # when an output parameter lacks annotation, which is always the
-            # case with callbacks.
+            # one when the type value is a pointer, and possibly another
+            # one when an output parameter lacks annotation, which is
+            # always the case with callbacks.
             for _ in range(2):
                 if ctype.endswith('*'):
                     (ptr_layer, ctype) = _unwrap_pointer_ctype(ctype)
@@ -454,23 +471,25 @@ class RawMapper(object):
                 else:
                     break
         if not is_ident(ctype):
-            raise MappingError('C type "{}" does not map to a valid Rust identifier'.format(ctype))
-        if '.' not in giname:
-            crate = self.crate
-        else:
-            ns_name = giname.split('.', 1)[0]
-            if ns_name == self.crate.namespace.name:
-                crate = self.crate
-            elif ns_name in self._extern_crates:
-                crate = self._extern_crates[ns_name]
-            else:
-                assert False, '{} does not refer to a defined namespace; has the type been resolved?'.format(giname)
+            raise MappingError(
+                'C type "{}" ({}) does not map to a valid Rust identifier'
+                .format(ctype, giname))
+
         if crate == self.crate:
-            return '{ptr}{name}'.format(
+            syntax = '{ptr}{name}'.format(
                     ptr=ptr_prefix, name=ctype)
         else:
-            return '{ptr}{crate}::{name}'.format(
+            syntax = '{ptr}{crate}::{name}'.format(
                     ptr=ptr_prefix, crate=crate.local_name, name=ctype)
+
+        if nullable:
+            # Callbacks need special treatment: C function pointer fields
+            # can be NULL while Rust extern fns can't.
+            # The trick is to use the null pointer optimization of Option.
+            typenode = crate.namespace.names[name]
+            if isinstance(typenode, ast.Callback):
+                return 'Option<{}>'.format(syntax)
+        return syntax
 
     def _map_array(self, array, actual_ctype):
         if array.array_type == ast.Array.C:
@@ -538,19 +557,20 @@ class RawMapper(object):
         :return: a string with Rust syntax referring to the type
         """
         assert isinstance(field, ast.Field)
-        if not field.type:
-            node = field.anonymous_node
-            if isinstance(node, ast.Callback):
-                # Function pointer fields can be NULL,
-                # so use the null pointer optimization of Option
-                return 'Option<{}>'.format(self.map_callback(node))
-            raise MappingError(
-                    'cannot represent anonymous type of field {} ({})'.format(
-                        field.name, node))
         if field.bits is not None:
-            raise MappingError('cannot represent bit field {}'.format(
-                    field.name))
-        return self._map_type(field.type)
+            raise MappingError(
+                    'cannot represent bit field {}'.format(field.name))
+        # Function pointers in structure fields are always considered
+        # nullable. So we pass down the nullable flag both when the field
+        # type is a name reference and when it's an anonymous callback.
+        if not field.type:
+            typenode = field.anonymous_node
+            if isinstance(typenode, ast.Callback):
+                return self.map_callback(typenode, nullable=True)
+            raise MappingError(
+                'cannot represent anonymous type of field {} ({})'
+                .format(field.name, typenode))
+        return self._map_type(field.type, nullable=True)
 
     def map_parameter_type(self, parameter):
         """Return the Rust FFI type syntax for a function parameter.
@@ -560,7 +580,8 @@ class RawMapper(object):
         """
         assert isinstance(parameter, ast.Parameter)
         actual_ctype = _normalize_call_signature_ctype(parameter)
-        return self._map_type(parameter.type, actual_ctype)
+        return self._map_type(parameter.type, actual_ctype,
+                              nullable=parameter.nullable)
 
     def map_return_type(self, retval):
         """Return the Rust FFI type syntax for a function's return value.
@@ -569,18 +590,22 @@ class RawMapper(object):
         :return: a string with Rust syntax describing the type
         """
         assert isinstance(retval, ast.Return)
-        return self._map_type(retval.type)
+        return self._map_type(retval.type, nullable=retval.nullable)
 
-    def map_callback(self, callback):
+    def map_callback(self, callback, nullable=False):
         """Return the Rust FFI type syntax for a callback node.
 
         :param callback: an object of :class:`ast.Callback`
+        :param nullable: True if the callback can be nullable
         :return: a string with Rust syntax describing the type
         """
         assert isinstance(callback, ast.Callback)
         param_list = [self.map_parameter_type(param)
                       for param in callback.parameters]
-        syntax = 'extern "C" fn({})'.format(', '.join(param_list))
+        syntax = 'extern "C" fn ({})'.format(', '.join(param_list))
         if callback.retval.type != ast.TYPE_NONE:
             syntax += ' -> {}'.format(self.map_return_type(callback.retval))
-        return syntax
+        if nullable:
+            return 'Option<{}>'.format(syntax)
+        else:
+            return syntax
