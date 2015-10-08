@@ -148,7 +148,7 @@ def sys_crate_name(namespace):
     and converting the name to lowercase, then concatenating the
     resulting strings separated with a ``_`` and appending ``_sys``.
 
-    :param namespace: an object of :class:`grust.gi.ast.Namespace`.
+    :param namespace: an instance of :class:`ast.Namespace`.
     :return: a string with the crate name.
     """
     return '{name}_{version}_sys'.format(
