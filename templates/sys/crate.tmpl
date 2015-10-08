@@ -138,7 +138,7 @@ pub const ${member.symbol}: guint = ${member.value};
       param_list = ['...']
       del parameters[-1]
   param_list[:0] = ['{name}: {type}'.format(
-                        name=param.argname,
+                        name=sanitize_ident(param.argname),
                         type=mapper.map_parameter_type(param))
                     for param in parameters]
 %>\
