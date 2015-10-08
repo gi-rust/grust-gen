@@ -123,22 +123,45 @@ def sanitize_ident(name):
     if not _ident_pat.match(name):
         raise ValueError('the name "{}" is not a valid Rust identifier'.format(name))
     if _keyword_pat.match(name):
-        return name + '_'
+        name += '_'
     return name
 
+_toupper_tr = string.maketrans(string.ascii_lowercase,
+                               string.ascii_uppercase)
+_tolower_tr = string.maketrans(string.ascii_uppercase,
+                               string.ascii_lowercase)
+
+def ascii_toupper(s):
+    return s.translate(_toupper_tr) if type(s) == str else s.upper()
+def ascii_tolower(s):
+    return s.translate(_tolower_tr) if type(s) == str else s.lower()
+
 _snake_break_pat = re.compile(r'(^|_)([a-zA-Z])')
+_digit_letter_pat = re.compile(r'([0-9])([a-z])')
 
 def to_camel_case(name):
     """Converts a snake_case name to CamelCase.
+
+    Also handles some freak cases: "Self" is a Rust keyword, so we get
+    "Self_" instead.
+    Some enum member names in GIR were converted from prefixed C names
+    where the member's own name part starts with a number. These get
+    prefixed with an underscore.
     """
-    return _snake_break_pat.sub(lambda m: m.group(2).upper(), name)
+    name = _snake_break_pat.sub(
+            lambda m: ascii_toupper(m.group(2)), name)
+    name = _digit_letter_pat.sub(
+            lambda m: m.group(1) + ascii_toupper(m.group(2)), name)
+    if name[:1].isdigit():
+        name = '_' + name
+    if _keyword_pat.match(name):
+        name += '_'
+    return name
 
 _nonalpha_pat = re.compile(r'\W')
-_lowercase_tr = string.maketrans(string.ascii_uppercase,
-                                 string.ascii_lowercase)
 
 def _sanitize_crate_name_chars(name):
-    return _nonalpha_pat.sub('_', name).translate(_lowercase_tr)
+    return ascii_tolower(_nonalpha_pat.sub('_', name))
 
 def sys_crate_name(namespace):
     """Generate a conventional ``*_sys`` crate name for a GI namespace.
