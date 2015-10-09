@@ -2,6 +2,7 @@
   from grust.gi import ast
   from grust.gi import message
   from grust.mapping import MappingError
+  from grust.mapping import ffi_basic_types
   from grust.mapping import sanitize_ident, to_camel_case, escape_bytestring
   from grust.mapping import TYPE_STATIC_BYTES_REF
 %>\
@@ -73,7 +74,16 @@ extern {
       emit(function, funcnode)
 %>\
 }
-<%def name="alias(node)">
+<%def name="alias(node)">\
+<%
+  if node.ctype in ffi_basic_types:
+      if namespace.name in ('GLib', 'GObject'):
+          # These redundantly introspect GType
+          return ''
+      raise ConsistencyError(
+            'C type name {} conflicts with a fundamental type'
+            .format(node.ctype))
+%>
 pub type ${node.ctype} = ${mapper.map_aliased_type(node)};
 </%def>\
 <%def name="callback(node)">
