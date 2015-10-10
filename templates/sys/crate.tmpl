@@ -61,7 +61,15 @@ use gtypes::*;
               continue
           emit(NODE_DEFS[node.__class__], node)
       elif isinstance(node, (ast.Function, ast.Signal, ast.Property)):
-          pass
+          continue
+      elif isinstance(node, ast.Union):
+          # Not supported, but can be suppressed
+          if node.ctype in self.attr.suppress_c_names:
+              continue
+          warn(node,
+               ('node type {} is not supported; consider suppressing'
+                + ' and providing a custom definition')
+               .format(node.__class__.__name__))
       else:
           warn(node,
                'node type {} is not supported'.format(node.__class__.__name__))
