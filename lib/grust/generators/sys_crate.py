@@ -26,12 +26,12 @@ class SysCrateWriter(object):
 
     def __init__(self,
                  transformer,
-                 template_lookup,
+                 template,
                  options,
                  gir_filename=None):
         self._transformer = transformer
         self._mapper = RawMapper(transformer.namespace)
-        self._lookup = template_lookup
+        self._template = template
         self._options = options
         if gir_filename:
             self._message_positions = set(
@@ -42,9 +42,9 @@ class SysCrateWriter(object):
             lambda node, chain: self._prepare_walk(node, chain))
 
     def write(self, output):
-        template = self._lookup.get_template('sys/crate.tmpl')
-        result = template.render(mapper=self._mapper,
-                                 message_positions=self._message_positions)
+        result = self._template.render(
+                    mapper=self._mapper,
+                    message_positions=self._message_positions)
         output.write(result)
 
     def _prepare_walk(self, node, chain):

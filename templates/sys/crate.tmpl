@@ -40,6 +40,9 @@ extern crate ${xc.name} as ${xc.local_name};
 
 use gtypes::*;
 
+<%block name="custom_types">\
+<%doc>Override to put your crate's custom type definitions here.</%doc>\
+</%block>\
 <%
   NODE_DEFS = {
     ast.Alias: alias,

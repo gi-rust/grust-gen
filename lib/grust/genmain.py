@@ -23,7 +23,7 @@ import argparse
 import os
 import sys
 import mako
-from mako.lookup import TemplateLookup
+from mako.lookup import Template, TemplateLookup
 from .gi.transformer import Transformer
 from .gi import message
 from .gi import utils
@@ -40,6 +40,8 @@ def _create_arg_parser():
     parser.add_argument('-I', '--include-dir', action='append',
                         dest='include_dirs', metavar='DIR',
                         help='add directory to include search path')
+    parser.add_argument('-t', '--template',
+                        help='name of the custom template file')
     return parser
 
 def error_cleanup(output):
@@ -67,8 +69,12 @@ def generator_main(template_dir):
     tmpl_lookup = TemplateLookup(directories=[template_dir],
                                  output_encoding='utf-8',
                                  module_directory=tmpl_module_dir)
+    if opts.template is None:
+        template = tmpl_lookup.get_template('/sys/crate.tmpl')
+    else:
+        template = Template(filename=opts.template, lookup=tmpl_lookup)
     gen = SysCrateWriter(transformer=transformer,
-                         template_lookup=tmpl_lookup,
+                         template=template,
                          options=opts,
                          gir_filename=opts.girfile)
     try:
