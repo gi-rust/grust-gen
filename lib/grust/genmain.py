@@ -40,8 +40,6 @@ def _create_arg_parser():
     parser.add_argument('-I', '--include-dir', action='append',
                         dest='include_dirs', metavar='DIR',
                         help='add directory to include search path')
-    parser.add_argument('--crate-name',
-                        help='Name of the generated crate')
     return parser
 
 def error_cleanup(output):
