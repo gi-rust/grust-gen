@@ -5,6 +5,9 @@
   from grust.mapping import ffi_basic_types
   from grust.mapping import sanitize_ident, to_camel_case, escape_bytestring
   from grust.mapping import TYPE_STATIC_BYTES_REF
+
+  # Override to suppress C names from the generated output
+  suppress_c_names = []
 %>\
 <%page args="mapper, message_positions"/>\
 <%
@@ -38,34 +41,31 @@ extern crate ${xc.name} as ${xc.local_name};
 use gtypes::*;
 
 <%
+  NODE_DEFS = {
+    ast.Alias: alias,
+    ast.Callback: callback,
+    ast.Constant: constant,
+    ast.Record: compound,
+    ast.Class: compound,
+    ast.Interface: interface,
+    ast.Enum: enum,
+    ast.Bitfield: flags
+  }
+
   for node in namespace.names.values():
-      node_tmpl = None
-      if isinstance(node, ast.Function):
+      if node.__class__ in NODE_DEFS:
+          if node.ctype in self.attr.suppress_c_names:
+              continue
+          emit(NODE_DEFS[node.__class__], node)
+      elif isinstance(node, (ast.Function, ast.Signal, ast.Property)):
           pass
-      elif isinstance(node, ast.Alias):
-          node_tmpl = alias
-      elif isinstance(node, ast.Callback):
-          node_tmpl = callback
-      elif isinstance(node, ast.Constant):
-          node_tmpl = constant
-      elif isinstance(node, (ast.Signal, ast.Property)):
-          pass
-      elif isinstance(node, (ast.Record, ast.Class)):
-          node_tmpl = compound
-      elif isinstance(node, ast.Interface):
-          node_tmpl = interface
-      elif isinstance(node, ast.Enum):
-          node_tmpl = enum
-      elif isinstance(node, ast.Bitfield):
-          node_tmpl = flags
       else:
-          warn(node, 'node type {} is not supported'.format(node.__class__.__name__))
-      endif
-      if node_tmpl:
-          emit(node_tmpl, node)
+          warn(node,
+               'node type {} is not supported'.format(node.__class__.__name__))
 
   functions = sorted([node for node in namespace.symbols.values()
-                      if isinstance(node, ast.Function)],
+                      if (isinstance(node, ast.Function)
+                          and not node.symbol in self.attr.suppress_c_names)],
                      key=lambda node: node.symbol)
 %>
 extern {
@@ -116,25 +116,31 @@ pub struct ${node.ctype} {
 <%def name="interface(node)">
 pub enum ${node.ctype} { }
 </%def>\
-<%def name="_base_enum(node)">\
+<%def name="_enum_common(node, member_const_tmpl)">\
 #[repr(C)]
 pub enum ${node.ctype} {
 % for member in node.members:
     ${to_camel_case(member.name)} = ${member.value},
 % endfor
 }
+<%
+  for member in node.members:
+      if member.symbol in self.attr.suppress_c_names:
+          continue
+      member_const_tmpl(node, member)
+%>\
 </%def>\
 <%def name="enum(node)">
-${_base_enum(node)}
-% for member in node.members:
+${_enum_common(node, enum_member_const)}\
+</%def>\
+<%def name="enum_member_const(node, member)">\
 pub const ${member.symbol}: ${node.ctype} = ${node.ctype}::${to_camel_case(member.name)};
-% endfor
 </%def>\
 <%def name="flags(node)">
-${_base_enum(node)}
-% for member in node.members:
+${_enum_common(node, flags_member_const)}\
+</%def>\
+<%def name="flags_member_const(node, member)">\
 pub const ${member.symbol}: guint = ${member.value};
-% endfor
 </%def>\
 <%def name="function(node)">\
 <%
