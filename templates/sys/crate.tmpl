@@ -3,8 +3,7 @@
   from grust.gi import message
   from grust.mapping import MappingError
   from grust.mapping import ffi_basic_types
-  from grust.mapping import sanitize_ident, to_camel_case, escape_bytestring
-  from grust.mapping import TYPE_STATIC_BYTES_REF
+  from grust.mapping import sanitize_ident, to_camel_case
 
   # Override to suppress C names from the generated output
   suppress_c_names = []
@@ -102,15 +101,9 @@ pub type ${node.ctype} = ${mapper.map_callback(node)};
 </%def>\
 <%def name="constant(node)">
 <%
-  value_type = mapper.map_const_value_type(node)
+  value_type, value = mapper.map_constant(node)
 %>\
-pub const ${node.ctype}: ${value_type} = \
-% if value_type == TYPE_STATIC_BYTES_REF:
-b"${escape_bytestring(node.value)}\0"\
-% else:
-${node.value}\
-% endif
-;
+pub const ${node.ctype}: ${value_type} = ${value};
 </%def>\
 <%def name="compound(node)">
 % if len(node.fields) == 0:

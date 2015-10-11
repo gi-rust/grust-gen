@@ -42,8 +42,6 @@ import re
 import string
 from .gi import ast
 
-TYPE_STATIC_BYTES_REF = "&'static [u8]"
-
 ffi_basic_types = {}
 for name in ('gpointer', 'gconstpointer', 'gboolean', 'gchar', 'gshort',
              'gushort', 'gint', 'guint', 'glong', 'gulong', 'gsize', 'gssize',
@@ -557,19 +555,32 @@ class RawMapper(object):
         assert isinstance(alias, ast.Alias)
         return self._map_type(alias.target)
 
-    def map_const_value_type(self, constant):
-        """Return the Rust FFI type for the value type of a constant.
+    def map_constant(self, constant):
+        """Return the Rust syntax for the type and the initializer of a constant.
 
         :param constant: an object of :class:`ast.Constant`
-        :return: a string with Rust syntax referring to the type
+        :return: a tuple of two strings carrying Rust syntax; the first one
+                 describes the type, the second one has the initializer
+                 expression.
         """
         assert isinstance(constant, ast.Constant)
-        if constant.value_type.ctype in ('gchar*', 'const gchar*',
-                                         'char*', 'const char*'):
+        value_type = constant.value_type
+        value = constant.value
+        if value_type == ast.TYPE_BOOLEAN:
+            if value == 'false':
+                return ('gboolean', 'FALSE')
+            elif value == 'true':
+                return ('gboolean', 'TRUE')
+            else:
+                raise MappingError('Unexpected boolean constant value {}'
+                                   .format(value))
+        elif value_type.ctype in ('gchar*', 'const gchar*',
+                                  'char*', 'const char*'):
             # String constants are only defined for convenience, so they
-            # can be of a type compatible with Rust bytestring literals
-            return TYPE_STATIC_BYTES_REF
-        return self._map_type(constant.value_type)
+            # can be Rust bytestrings.
+            return ("&'static [u8]",
+                    r'b"{}\0"'.format(escape_bytestring(value)))
+        return (self._map_type(value_type), value)
 
     def map_field_type(self, field):
         """Return the Rust FFI type for a field in a compound type.
