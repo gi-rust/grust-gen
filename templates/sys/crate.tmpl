@@ -27,6 +27,9 @@
 
 #![crate_name = "${mapper.crate.name}"]
 #![crate_type = "lib"]
+<%block name="custom_crate_attributes">\
+<%doc>Override to put your crate's custom crate-level attributes here.</%doc>\
+</%block>\
 
 extern crate gtypes;
 % for xc in mapper.extern_crates():
