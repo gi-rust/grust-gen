@@ -121,29 +121,44 @@ pub struct ${node.ctype} {
 pub enum ${node.ctype} { }
 </%def>\
 <%def name="_enum_common(node, member_const_tmpl)">\
+<%
+  # Deduplicate the values
+  value_name_map = {}
+  for member in node.members:
+      value = int(member.value)
+      if value in value_name_map:
+          continue
+      value_name_map[value] = to_camel_case(member.name)
+  if len(value_name_map) == 1:
+      # Work around https://github.com/rust-lang/rust/issues/10292
+      value = value_name_map.keys()[0]
+      dummy_value = 0 if value != 0 else 1
+      value_name_map[dummy_value] = '_Dummy'
+%>
 #[repr(C)]
 pub enum ${node.ctype} {
-% for member in node.members:
-    ${to_camel_case(member.name)} = ${member.value},
+% for name, value in [(value_name_map[val], val) for val in sorted(value_name_map.keys())]:
+    ${name} = ${value},
 % endfor
 }
 <%
   for member in node.members:
       if member.symbol in self.attr.suppress_c_names:
           continue
-      member_const_tmpl(node, member)
+      member_const_tmpl(node, member, value_name_map[int(member.value)])
 %>\
 </%def>\
 <%def name="enum(node)">
 ${_enum_common(node, enum_member_const)}\
 </%def>\
-<%def name="enum_member_const(node, member)">\
-pub const ${member.symbol}: ${node.ctype} = ${node.ctype}::${to_camel_case(member.name)};
+<%def name="enum_member_const(node, member, value_name)">\
+pub const ${member.symbol}: ${node.ctype} = ${node.ctype}::${value_name};
 </%def>\
 <%def name="flags(node)">
 ${_enum_common(node, flags_member_const)}\
 </%def>\
-<%def name="flags_member_const(node, member)">\
+<%def name="flags_member_const(node, member, value_name)">\
+## Use the literal value as the enum members cannot be ORed
 pub const ${member.symbol}: guint = ${member.value};
 </%def>\
 <%def name="function(node)">\
