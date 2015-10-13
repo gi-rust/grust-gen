@@ -140,7 +140,7 @@ pub enum ${node.ctype} { }
       value = value_name_map.keys()[0]
       dummy_value = 0 if value != 0 else 1
       value_name_map[dummy_value] = '_Dummy'
-%>
+%>\
 #[repr(C)]
 pub enum ${node.ctype} {
 % for name, value in [(value_name_map[val], val) for val in sorted(value_name_map.keys())]:
