@@ -3,7 +3,7 @@
   from grust.gi import message
   from grust.mapping import MappingError
   from grust.mapping import ffi_basic_types
-  from grust.mapping import sanitize_ident, to_camel_case
+  from grust.mapping import sanitize_ident, to_camel_case, map_constant_value
 
   # Override to suppress C names from the generated output
   suppress_c_names = []
@@ -165,7 +165,7 @@ ${_enum_common(node, flags_member_const)}\
 </%def>\
 <%def name="flags_member_const(node, member, value_name)">\
 ## Use the literal value as the enum members cannot be ORed
-pub const ${member.symbol}: guint = ${member.value};
+pub const ${member.symbol}: guint = ${map_constant_value(ast.TYPE_UINT, member.value)};
 </%def>\
 <%def name="function(node)">\
 <%

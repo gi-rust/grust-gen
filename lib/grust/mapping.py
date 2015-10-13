@@ -82,6 +82,14 @@ for t in ('size_t', 'ssize_t', 'time_t', 'off_t', 'pid_t', 'uid_t', 'gid_t',
 libc_types['long long'] = 'c_longlong'
 libc_types['unsigned long long'] = 'c_ulonglong'
 
+unsigned_types = (
+    ast.TYPE_USHORT, ast.TYPE_UINT, ast.TYPE_ULONG,
+    ast.TYPE_UINT8, ast.TYPE_UINT16, ast.TYPE_UINT32, ast.TYPE_UINT64,
+    ast.TYPE_SIZE, ast.TYPE_UINTPTR, ast.TYPE_UNICHAR, ast.TYPE_LONG_ULONG
+)
+
+_string_ctypes = set(('gchar*', 'const gchar*', 'char*', 'const char*'))
+
 _ident_pat = re.compile(r'^[A-Za-z_][A-Za-z_0-9]*$')
 
 # Taken from https://github.com/rust-lang/rust/blob/master/src/libsyntax/parse/token.rs
@@ -180,6 +188,95 @@ def escape_bytestring(s):
     """Escape byte string to have valid syntax for Rust bytestring content.
     """
     return _bytestring_escape_pat.sub(r'\\\1', s)
+
+_integer_constant_pat = re.compile(r'-?\d+$')
+
+def validate_integer_value(value):
+    """Validate the value of an integer constant.
+
+    The value is expected to be normalized for the GIR format, that is,
+    it should be in the decimal base, with an optional minus sign, and no
+    whitespace anywhere.
+
+    :param value: constant value as a string
+    :raises MappingError: if the value does not follow the format for
+                          integer constants
+    """
+    if not _integer_constant_pat.match(value):
+        raise MappingError('Unexpected integer constant value "{}"'
+                           .format(value))
+
+class SizedIntTypeInfo(object):
+    def __init__(self, bit_width, signed):
+        self.bit_width = bit_width
+        self.signed = signed
+
+    @classmethod
+    def _get_map(cls):
+        type_map = {}
+        for w in (8, 16, 32, 64):
+            suffix = str(w)
+            type_map['gint'  + suffix] = cls(bit_width=w, signed=True)
+            type_map['guint' + suffix] = cls(bit_width=w, signed=False)
+        return type_map
+
+    def fits(self, in_value):
+        value = int(in_value)
+        w = self.bit_width
+        if self.signed:
+            return -2**(w - 1) <= value <= 2**(w - 1) - 1
+        else:
+            return 0 <= value <= 2**w - 1
+
+    def convert(self, in_value):
+        value = int(in_value)
+        if self.fits(value):
+            return in_value
+        w = self.bit_width
+        if self.signed and value <= 2**w - 1:
+            # The value is within the bit width, but out of the range of
+            # the target signed type. Do a twos-complement conversion on it.
+            value -= 2**w
+            return str(value)
+        else:
+            # The value is out of bit width for the target type.
+            # Just emit it as is and hope Rust knows how to deal with it.
+            return in_value
+
+sized_int_types = SizedIntTypeInfo._get_map()
+
+def map_constant_value(value_type, value):
+    """Return Rust representation of a constant value for a given type.
+
+    The value is as found in the value attribute of a GI constant node.
+    :param value_type: an instance of :class:`ast.Type`
+    :param value: constant value as a string
+    :return: a string with Rust syntax for a constant initializer expression.
+    """
+    if value_type == ast.TYPE_BOOLEAN:
+        if value == 'false':
+            return 'FALSE'
+        elif value == 'true':
+            return 'TRUE'
+        else:
+            raise MappingError('Unexpected boolean constant value "{}"'
+                               .format(value))
+    elif value_type.ctype in _string_ctypes:
+        return r'b"{}\0"'.format(escape_bytestring(value))
+    elif value_type.target_fundamental in sized_int_types:
+        validate_integer_value(value)
+        typeinfo = sized_int_types[value_type.target_fundamental]
+        return typeinfo.convert(value)
+    elif value_type in unsigned_types:
+        # Sometimes a negative value is given for an unsigned type.
+        # This can happen when the value is converted from a bitwise
+        # negation of e.g. a combination of flags. Just shoehorn it
+        # into the destination type, converting from the largest supported
+        # signed integer type for the literal.
+        validate_integer_value(value)
+        if int(value) < 0:
+            return '{}i64 as {}'.format(value, value_type.target_fundamental)
+    return value
 
 class MappingError(Exception):
     """Raised when something cannot be represented in Rust.
@@ -565,21 +662,11 @@ class RawMapper(object):
         """
         assert isinstance(constant, ast.Constant)
         value_type = constant.value_type
-        value = constant.value
-        if value_type == ast.TYPE_BOOLEAN:
-            if value == 'false':
-                return ('gboolean', 'FALSE')
-            elif value == 'true':
-                return ('gboolean', 'TRUE')
-            else:
-                raise MappingError('Unexpected boolean constant value {}'
-                                   .format(value))
-        elif value_type.ctype in ('gchar*', 'const gchar*',
-                                  'char*', 'const char*'):
+        value = map_constant_value(value_type, constant.value)
+        if value_type.ctype in _string_ctypes:
             # String constants are only defined for convenience, so they
             # can be Rust bytestrings.
-            return ("&'static [u8]",
-                    r'b"{}\0"'.format(escape_bytestring(value)))
+            return ("&'static [u8]", value)
         return (self._map_type(value_type), value)
 
     def map_field_type(self, field):
