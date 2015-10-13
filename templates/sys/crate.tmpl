@@ -109,7 +109,10 @@ pub type ${node.ctype} = ${mapper.map_callback(node)};
 pub const ${node.ctype}: ${value_type} = ${value};
 </%def>\
 <%def name="compound(node)">
-% if len(node.fields) == 0:
+% if node.disguised:
+#[repr(C)]
+pub struct ${node.ctype}(gpointer);
+% elif len(node.fields) == 0:
 pub enum ${node.ctype} { }
 % else:
 #[repr(C)]
