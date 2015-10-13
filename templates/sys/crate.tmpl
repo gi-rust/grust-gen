@@ -3,7 +3,8 @@
   from grust.gi import message
   from grust.mapping import MappingError
   from grust.mapping import ffi_basic_types
-  from grust.mapping import sanitize_ident, to_camel_case, map_constant_value
+  from grust.mapping import sanitize_ident, to_camel_case
+  from grust.mapping import map_constant_value, validate_integer_value
 
   # Override to suppress C names from the generated output
   suppress_c_names = []
@@ -131,6 +132,7 @@ pub enum ${node.ctype} { }
   # Deduplicate the values
   value_name_map = {}
   for member in node.members:
+      validate_integer_value(member.value)
       value = int(member.value)
       if value in value_name_map:
           continue
