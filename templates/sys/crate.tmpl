@@ -88,6 +88,7 @@ extern {
       emit(function, funcnode)
 %>\
 }
+##
 <%def name="alias(node)">\
 <%
   if node.ctype in ffi_basic_types:
@@ -127,9 +128,11 @@ pub struct ${node.ctype} {
 }
 % endif
 </%def>\
+##
 <%def name="interface(node)">
 pub enum ${node.ctype} { }
 </%def>\
+##
 <%def name="_enum_common(node, member_const_tmpl)">\
 <%
   # Deduplicate the values
@@ -159,12 +162,14 @@ pub enum ${node.ctype} {
       member_const_tmpl(node, member, value_name_map[int(member.value)])
 %>\
 </%def>\
+##
 <%def name="enum(node)">
 ${_enum_common(node, enum_member_const)}\
 </%def>\
 <%def name="enum_member_const(node, member, value_name)">\
 pub const ${member.symbol}: ${node.ctype} = ${node.ctype}::${value_name};
 </%def>\
+##
 <%def name="flags(node)">
 ${_enum_common(node, flags_member_const)}\
 </%def>\
@@ -172,6 +177,7 @@ ${_enum_common(node, flags_member_const)}\
 ## Use the literal value as the enum members cannot be ORed
 pub const ${member.symbol}: guint = ${map_constant_value(ast.TYPE_UINT, member.value)};
 </%def>\
+##
 <%def name="function(node)">\
 <%
   if any(param.type == ast.TYPE_VALIST for param in node.parameters):
