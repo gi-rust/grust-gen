@@ -35,4 +35,4 @@ class MatchList(object):
             self._regexp = re.compile('|'.join(branches))
 
     def __contains__(self, name):
-        return bool(self._regexp.match(name))
+        return isinstance(name, str) and bool(self._regexp.match(name))
