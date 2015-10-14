@@ -51,8 +51,8 @@ use gtypes::*;
     ast.Alias: alias,
     ast.Callback: callback,
     ast.Constant: constant,
-    ast.Record: compound,
-    ast.Class: compound,
+    ast.Record: struct,
+    ast.Class: struct,
     ast.Interface: interface,
     ast.Enum: enum,
     ast.Bitfield: flags
@@ -100,17 +100,20 @@ extern {
 %>
 pub type ${node.ctype} = ${mapper.map_aliased_type(node)};
 </%def>\
+##
 <%def name="callback(node)">
 pub type ${node.ctype} = ${mapper.map_callback(node)};
 </%def>\
+##
 <%def name="constant(node)">
 <%
   value_type, value = mapper.map_constant(node)
 %>\
 pub const ${node.ctype}: ${value_type} = ${value};
 </%def>\
-<%def name="compound(node)">
-% if node.disguised:
+##
+<%def name="struct(node)">
+% if isinstance(node, ast.Record) and node.disguised:
 #[repr(C)]
 pub struct ${node.ctype}(gpointer);
 % elif len(node.fields) == 0:
