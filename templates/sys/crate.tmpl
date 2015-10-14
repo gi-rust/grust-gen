@@ -8,6 +8,9 @@
 
   # Override to suppress C names from the generated output
   suppress_c_names = []
+
+  # Override to ignore nodes with GI names
+  skip_names = []
 %>\
 <%page args="mapper, message_positions"/>\
 <%
@@ -62,12 +65,16 @@ use gtypes::*;
       if node.__class__ in NODE_DEFS:
           if node.ctype in self.attr.suppress_c_names:
               continue
+          if node.name in self.attr.skip_names:
+              continue
           emit(NODE_DEFS[node.__class__], node)
       elif isinstance(node, (ast.Function, ast.Signal, ast.Property)):
           continue
       elif isinstance(node, ast.Union):
           # Not supported, but can be suppressed
           if node.ctype in self.attr.suppress_c_names:
+              continue
+          if node.name in self.attr.skip_names:
               continue
           warn(node,
                ('node type {} is not supported; consider suppressing'
@@ -79,7 +86,8 @@ use gtypes::*;
 
   functions = sorted([node for node in namespace.symbols.values()
                       if (isinstance(node, ast.Function)
-                          and not node.symbol in self.attr.suppress_c_names)],
+                          and node.symbol not in self.attr.suppress_c_names
+                          and node.name not in self.attr.skip_names)],
                      key=lambda node: node.symbol)
 %>
 extern {
