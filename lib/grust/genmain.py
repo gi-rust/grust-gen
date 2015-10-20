@@ -22,6 +22,7 @@ from __future__ import print_function
 import argparse
 import os
 import sys
+from pkg_resources import resource_filename
 import mako
 from mako.lookup import Template, TemplateLookup
 from .gi.transformer import Transformer
@@ -48,7 +49,7 @@ def error_cleanup(output):
     output.close()
     os.remove(output.name)
 
-def generator_main(template_dir):
+def generator_main():
     arg_parser = _create_arg_parser()
     opts = arg_parser.parse_args()
     if not opts.sys_mode:
@@ -59,13 +60,18 @@ def generator_main(template_dir):
     logger = message.MessageLogger.get()
     logger.enable_warnings((message.FATAL, message.ERROR, message.WARNING))
     transformer = Transformer.parse_from_gir(opts.girfile, opts.include_dirs)
+
     if 'GRUST_GEN_TEMPLATE_DIR' in os.environ:
         template_dir = os.environ['GRUST_GEN_TEMPLATE_DIR']
+    else:
+        template_dir = resource_filename(__name__, 'templates')
+
     if 'GRUST_GEN_DISABLE_CACHE' in os.environ:
         tmpl_module_dir = None
     else:
         tmpl_module_dir = utils.get_user_cache_dir(
                 os.path.join('grust-gen', 'template-modules'))
+
     tmpl_lookup = TemplateLookup(directories=[template_dir],
                                  output_encoding='utf-8',
                                  module_directory=tmpl_module_dir)
