@@ -103,6 +103,13 @@ use gtypes::*;
         functions.append(node)
     functions.sort(key=lambda node: node.symbol)
 %>
+<%block name="custom_extern">\
+<%doc>
+  If your crate needs to link functions that are not emitted in the
+  normal way, override this template block to output an external function
+  block or blocks.
+</%doc>\
+</%block>\
 %   if not self.attr.ignore_gtype_functions:
 // GType functions
 ${self.gtype_functions(namespace)}
