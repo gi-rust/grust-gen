@@ -94,7 +94,7 @@ use gtypes::*;
     for node in namespace.symbols.values():
         if not isinstance(node, ast.Function):
             continue
-        if self.attr.ignore_gtype_functions and node.is_type_meta_function():
+        if node.is_type_meta_function():
             continue
         if node.symbol in self.attr.suppress_c_names:
             continue
@@ -102,23 +102,13 @@ use gtypes::*;
             continue
         functions.append(node)
     functions.sort(key=lambda node: node.symbol)
-
-    gtype_functions = []
-    if not self.attr.ignore_gtype_functions:
-        for node in namespace.type_names.values():
-            if node.get_type is None:
-                continue
-            if isinstance(node, ast.Class) and node.fundamental:
-                continue
-            if node.get_type == 'intern':
-                continue
-            gtype_functions.append(node)
-        gtype_functions.sort(key=lambda node: node.get_type)
 %>
+%   if not self.attr.ignore_gtype_functions:
+// GType functions
+${self.gtype_functions(namespace)}
+%   endif
 extern {
 <%
-    for node in gtype_functions:
-        emit_node(gtype_function, node)
     for funcnode in functions:
         emit_node(function, funcnode)
 %>\
@@ -213,8 +203,28 @@ ${_enum_common(node, flags_member_const)}\
 pub const ${member.symbol}: guint = ${map_constant_value(ast.TYPE_UINT, member.value)};
 </%def>\
 ##
-<%def name="gtype_function(node)">\
-    pub fn ${node.get_type}() -> GType;
+<%def name="gtype_functions(namespace)">\
+<%
+    func_names = []
+    for node in namespace.type_names.values():
+        name = node.get_type
+        if name is None:
+            continue
+        if isinstance(node, ast.Class) and node.fundamental:
+            continue
+        if name == 'intern':
+            continue
+        func_names.append(name)
+    for node in namespace.symbols.values():
+        if isinstance(node, ast.Function) and node.is_type_meta_function():
+            func_names.append(node.symbol)
+    func_names.sort()
+%>\
+extern {
+%   for name in func_names:
+    pub fn ${name}() -> GType;
+%   endfor
+}
 </%def>\
 ##
 <%def name="function(node)">\
