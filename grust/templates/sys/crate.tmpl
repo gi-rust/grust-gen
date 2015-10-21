@@ -91,9 +91,15 @@ use gtypes::*;
                             and node.symbol not in self.attr.suppress_c_names
                             and node.name not in self.attr.skip_names)],
                        key=lambda node: node.symbol)
+    gtype_functions = sorted([node for node in namespace.type_names.values()
+                              if (node.get_type is not None
+                                  and node.get_type != 'intern')],
+                             key=lambda node: node.get_type)
 %>
 extern {
 <%
+    for node in gtype_functions:
+        emit_node(gtype_function, node)
     for funcnode in functions:
         emit_node(function, funcnode)
 %>\
@@ -186,6 +192,10 @@ ${_enum_common(node, flags_member_const)}\
 <%def name="flags_member_const(node, member, value_name)">\
 ## Use the literal value as the enum members cannot be ORed
 pub const ${member.symbol}: guint = ${map_constant_value(ast.TYPE_UINT, member.value)};
+</%def>\
+##
+<%def name="gtype_function(node)">\
+    pub fn ${node.get_type}() -> GType;
 </%def>\
 ##
 <%def name="function(node)">\
