@@ -67,6 +67,8 @@ use gtypes::*;
     }
 
     for node in namespace.names.values():
+        if node.foreign:
+            continue
         if node.__class__ in node_defs:
             if node.ctype in self.attr.suppress_c_names:
                 continue
