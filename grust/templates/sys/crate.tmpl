@@ -11,7 +11,7 @@ from grust import __version__ as gen_version
 suppress_c_names = []
 
 # Override to ignore nodes with GI names
-skip_names = []
+ignore_names = []
 
 # Set to true to ignore the get-type functions
 ignore_gtype_functions = False
@@ -70,7 +70,7 @@ use gtypes::*;
         if node.__class__ in node_defs:
             if node.ctype in self.attr.suppress_c_names:
                 continue
-            if node.name in self.attr.skip_names:
+            if node.name in self.attr.ignore_names:
                 continue
             emit_node(node_defs[node.__class__], node)
         elif isinstance(node, (ast.Function, ast.Signal, ast.Property)):
@@ -79,7 +79,7 @@ use gtypes::*;
             # Not supported, but can be suppressed
             if node.ctype in self.attr.suppress_c_names:
                 continue
-            if node.name in self.attr.skip_names:
+            if node.name in self.attr.ignore_names:
                 continue
             warn(node,
                  ('node type {} is not supported; consider suppressing'
@@ -98,7 +98,7 @@ use gtypes::*;
             continue
         if node.symbol in self.attr.suppress_c_names:
             continue
-        if node.name in self.attr.skip_names:
+        if node.name in self.attr.ignore_names:
             continue
         functions.append(node)
     functions.sort(key=lambda node: node.symbol)
