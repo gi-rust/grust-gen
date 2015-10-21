@@ -12,6 +12,10 @@ suppress_c_names = []
 
 # Override to ignore nodes with GI names
 skip_names = []
+
+# Set to true to ignore the get-type functions
+ignore_gtype_functions = False
+
 %>\
 <%page args="mapper, message_positions"/>\
 <%
@@ -86,15 +90,30 @@ use gtypes::*;
                  'node type {} is not supported'
                     .format(node.__class__.__name__))
 
-    functions = sorted([node for node in namespace.symbols.values()
-                        if (isinstance(node, ast.Function)
-                            and node.symbol not in self.attr.suppress_c_names
-                            and node.name not in self.attr.skip_names)],
-                       key=lambda node: node.symbol)
-    gtype_functions = sorted([node for node in namespace.type_names.values()
-                              if (node.get_type is not None
-                                  and node.get_type != 'intern')],
-                             key=lambda node: node.get_type)
+    functions = []
+    for node in namespace.symbols.values():
+        if not isinstance(node, ast.Function):
+            continue
+        if self.attr.ignore_gtype_functions and node.is_type_meta_function():
+            continue
+        if node.symbol in self.attr.suppress_c_names:
+            continue
+        if node.name in self.attr.skip_names:
+            continue
+        functions.append(node)
+    functions.sort(key=lambda node: node.symbol)
+
+    gtype_functions = []
+    if not self.attr.ignore_gtype_functions:
+        for node in namespace.type_names.values():
+            if node.get_type is None:
+                continue
+            if isinstance(node, ast.Class) and node.fundamental:
+                continue
+            if node.get_type == 'intern':
+                continue
+            gtype_functions.append(node)
+        gtype_functions.sort(key=lambda node: node.get_type)
 %>
 extern {
 <%
