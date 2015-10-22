@@ -48,6 +48,11 @@ extern crate ${xc.name};
 extern crate ${xc.name} as ${xc.local_name};
 %       endif
 %   endfor
+<%block name="custom_extern_crates">\
+<%doc>
+  Override to put your crate's custom extern crate declarations here.
+</%doc>\
+</%block>\
 
 use gtypes::*;
 
