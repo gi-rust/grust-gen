@@ -8,7 +8,7 @@ setup(
     },
     packages=find_packages(),
     package_data={
-        'grust': ['*.tmpl']
+        'grust': ['templates/*/*.tmpl']
     },
     entry_points={
         'console_scripts': [
