@@ -29,6 +29,13 @@ from .gi.transformer import Transformer
 from .gi import message
 from .gi import utils
 from .generators.sys_crate import SysCrateWriter
+from .output import FileOutput, DirectOutput
+
+def output_file(name):
+    if name == '-':
+        return DirectOutput(sys.stdout)
+    else:
+        return FileOutput(name)
 
 def _create_arg_parser():
     parser = argparse.ArgumentParser(
@@ -36,7 +43,7 @@ def _create_arg_parser():
     parser.add_argument('girfile', help='GIR XML file')
     parser.add_argument('--sys', dest='sys_mode', action='store_true',
                         help='generate a sys crate')
-    parser.add_argument('-o', '--output', type=argparse.FileType('w'),
+    parser.add_argument('-o', '--output', type=output_file,
                         help='output file')
     parser.add_argument('-I', '--include-dir', action='append',
                         dest='include_dirs', metavar='DIR',
@@ -45,20 +52,19 @@ def _create_arg_parser():
                         help='name of the custom template file')
     return parser
 
-def error_cleanup(output):
-    output.close()
-    os.remove(output.name)
-
 def generator_main():
     arg_parser = _create_arg_parser()
     opts = arg_parser.parse_args()
     if not opts.sys_mode:
         sys.exit('only --sys mode is currently supported')
+
     output = opts.output
     if output is None:
-        output = open('lib.rs', 'w')
+        output = FileOutput('lib.rs')
+
     logger = message.MessageLogger.get()
     logger.enable_warnings((message.FATAL, message.ERROR, message.WARNING))
+
     transformer = Transformer.parse_from_gir(opts.girfile, opts.include_dirs)
 
     if 'GRUST_GEN_TEMPLATE_DIR' in os.environ:
@@ -79,28 +85,26 @@ def generator_main():
         template = tmpl_lookup.get_template('/sys/crate.tmpl')
     else:
         template = Template(filename=opts.template, lookup=tmpl_lookup)
+
     gen = SysCrateWriter(transformer=transformer,
                          template=template,
                          options=opts,
                          gir_filename=opts.girfile)
-    try:
-        gen.write(output)
-    except Exception:
-        error_template = mako.exceptions.text_error_template()
-        sys.stderr.write(error_template.render())
-        error_cleanup(output)
-        return 1
 
-    error_count = logger.get_error_count()
-    warning_count = logger.get_warning_count()
-    if error_count > 0 or warning_count > 0:
-        print('{:d} error(s), {:d} warning(s)'.format(error_count, warning_count),
-              file=sys.stderr)
-    if error_count > 0:
-        error_cleanup(output)
-        return 2
+    with output as out:
+        try:
+            gen.write(out)
+        except Exception:
+            error_template = mako.exceptions.text_error_template()
+            sys.stderr.write(error_template.render())
+            raise SystemExit(1)
 
-    # FIXME: output should be a tempfile and replace the
-    # existing file atomically
-    output.close()
+        error_count = logger.get_error_count()
+        warning_count = logger.get_warning_count()
+        if error_count > 0 or warning_count > 0:
+            print('{:d} error(s), {:d} warning(s)'.format(error_count, warning_count),
+                  file=sys.stderr)
+        if error_count > 0:
+            raise SystemExit(2)
+
     return 0
