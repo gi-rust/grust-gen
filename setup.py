@@ -1,4 +1,4 @@
-from setuptools import setup
+from setuptools import setup, find_packages
 
 setup(
     name='grust-gen',
@@ -6,7 +6,7 @@ setup(
     use_scm_version={
         'write_to': 'grust/version.py'
     },
-    packages=['grust'],
+    packages=find_packages(),
     package_data={
         'grust': ['*.tmpl']
     },
