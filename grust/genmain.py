@@ -30,6 +30,7 @@ from .gi import message
 from .gi import utils
 from .generators.sys_crate import SysCrateWriter
 from .output import FileOutput, DirectOutput
+from . import __version__ as version
 
 def output_file(name):
     if name == '-':
@@ -41,6 +42,8 @@ def _create_arg_parser():
     parser = argparse.ArgumentParser(
         description='Generate a Rust crate from GIR XML')
     parser.add_argument('girfile', help='GIR XML file')
+    parser.add_argument('--version', action='version',
+                        version='%(prog)s ' + version)
     parser.add_argument('--sys', dest='sys_mode', action='store_true',
                         help='generate a sys crate')
     parser.add_argument('-o', '--output', type=output_file,
