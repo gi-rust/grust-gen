@@ -8,12 +8,13 @@ def _get_version():
     import os
 
     parent_dir = os.path.join(os.path.dirname(__file__), '..')
-    if os.path.isdir(os.path.join(parent_dir, '.git')):
+    if os.path.exists(os.path.join(parent_dir, '.git')):
 
         import subprocess
 
         try:
-            out = subprocess.check_output(['git', 'status', '--porcelain'],
+            out = subprocess.check_output(['git', '--work-tree', parent_dir,
+                                                  'status', '--porcelain'],
                                           cwd=parent_dir)
         except Exception:
             out = ''
