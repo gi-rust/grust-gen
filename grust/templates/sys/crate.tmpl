@@ -110,6 +110,9 @@ use gtypes::*;
         functions.append(node)
     functions.sort(key=lambda node: node.symbol)
 %>
+<%block name="custom_constants">\
+<%doc>Override to put your crate's custom constant definitions here.</%doc>\
+</%block>\
 <%block name="custom_extern">\
 <%doc>
   If your crate needs to link functions that are not emitted in the
