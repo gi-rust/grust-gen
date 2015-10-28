@@ -1,6 +1,7 @@
 *.pyc
 *.pyo
 /.eggs/
+*.egg
 *.egg-info/
 /build/
 /dist/
