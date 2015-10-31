@@ -1,10 +1,15 @@
 from setuptools import setup, find_packages
 
+with open('README.rst') as readme:
+    long_description = readme.read()
+
 setup(
     name='grust-gen',
     url='https://github.com/gi-rust/grust-gen',
     author='Mikhail Zabaluev',
     author_email='mikhail.zabaluev@gmail.com',
+    description='Rust binding generator for GObject introspection',
+    long_description=long_description,
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Environment :: Console',
