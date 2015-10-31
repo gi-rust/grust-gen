@@ -1,10 +1,7 @@
 The constituent parts of grust-gen are available for use and
 redistribution under various legal terms, as listed below.
 
-The grust-gen executable and its source is licensed under the GPLv2+.
-See the file COPYING.GPL.
-
-The Python library modules (located in the subdirectory lib/grust in the
+The Python library modules (located in the subdirectory grust in the
 source tree of the project) are licensed under the LGPLv2.1+. See the file
 COPYING.LGPL.
 
