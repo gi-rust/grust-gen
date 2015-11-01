@@ -18,6 +18,8 @@
 # 02110-1301  USA
 
 import os
+import shutil
+import stat
 import tempfile
 
 class FileOutput(object):
@@ -48,6 +50,11 @@ class FileOutput(object):
         mode = 'w' if self._text_mode else 'wb'
         self._tmp_output = os.fdopen(handle, mode)
         self._tmp_filename = name
+        if (os.path.isfile(self._filename)):
+            shutil.copystat(self._filename, self._tmp_filename)
+        else:
+            os.chmod(self._tmp_filename,
+                     stat.S_IWUSR | stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
         return self._tmp_output
 
     def __exit__(self, exception_type, exception, traceback):
