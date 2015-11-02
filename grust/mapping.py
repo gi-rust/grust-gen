@@ -39,7 +39,6 @@ versions of a GObject namespace on crates.io.
 """
 
 import re
-import string
 from .giscanner import ast
 
 ffi_basic_types = {}
@@ -132,16 +131,6 @@ def sanitize_ident(name):
         name += '_'
     return name
 
-_toupper_tr = string.maketrans(string.ascii_lowercase,
-                               string.ascii_uppercase)
-_tolower_tr = string.maketrans(string.ascii_uppercase,
-                               string.ascii_lowercase)
-
-def ascii_toupper(s):
-    return s.translate(_toupper_tr) if type(s) == str else s.upper()
-def ascii_tolower(s):
-    return s.translate(_tolower_tr) if type(s) == str else s.lower()
-
 _snake_break_pat = re.compile(r'(^|_)([a-zA-Z])')
 _digit_letter_pat = re.compile(r'([0-9])([a-z])')
 
@@ -155,9 +144,9 @@ def to_camel_case(name):
     prefixed with an underscore.
     """
     name = _snake_break_pat.sub(
-            lambda m: ascii_toupper(m.group(2)), name)
+            lambda m: m.group(2).upper(), name)
     name = _digit_letter_pat.sub(
-            lambda m: m.group(1) + ascii_toupper(m.group(2)), name)
+            lambda m: m.group(1) + m.group(2).upper(), name)
     if name[:1].isdigit():
         name = '_' + name
     return sanitize_ident(name)
@@ -165,7 +154,7 @@ def to_camel_case(name):
 _nonalpha_pat = re.compile(r'\W')
 
 def _sanitize_crate_name_chars(name):
-    return ascii_tolower(_nonalpha_pat.sub('_', name))
+    return _nonalpha_pat.sub('_', name).lower()
 
 def sys_crate_name(namespace):
     """Generate a conventional ``*_sys`` crate name for a GI namespace.
