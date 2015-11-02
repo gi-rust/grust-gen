@@ -78,8 +78,10 @@ def generator_main():
     if 'GRUST_GEN_DISABLE_CACHE' in os.environ:
         tmpl_module_dir = None
     else:
+        py_suffix = '-py{}.{}'.format(sys.version_info.major,
+                                      sys.version_info.minor)
         tmpl_module_dir = utils.get_user_cache_dir(
-                os.path.join('grust-gen', 'template-modules'))
+                os.path.join('grust-gen', 'template-modules' + py_suffix))
 
     tmpl_lookup = TemplateLookup(directories=[template_dir],
                                  output_encoding='utf-8',
