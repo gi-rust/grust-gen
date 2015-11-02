@@ -40,7 +40,7 @@ versions of a GObject namespace on crates.io.
 
 import re
 import string
-from .gi import ast
+from .giscanner import ast
 
 ffi_basic_types = {}
 for name in ('gpointer', 'gconstpointer', 'gboolean', 'gchar', 'gshort',
@@ -373,7 +373,7 @@ class RawMapper(object):
 
     A mapper object should be used in two passes over the AST: first,
     all types that need to be accounted for in the generated code are
-    *resolved* over an instance of :class:`grust.gi.Transformer` with
+    *resolved* over an instance of :class:`grust.giscanner.Transformer` with
     the parsed includes, using  :meth:`resolve_type` or
     :meth:`resolve_call_signature_type`.
     Then, during a code generation pass, *mapping* methods can be called
@@ -428,7 +428,7 @@ class RawMapper(object):
         type container objects in the signature of a function.
 
         :param typedesc: an instance of :class:`ast.Type`
-        :param transformer: the :class:`~grust.gi.Transformer` object holding the parsed GIR
+        :param transformer: the :class:`~grust.giscanner.Transformer` object holding the parsed GIR
         """
         assert isinstance(typedesc, ast.Type)
         actual_ctype = _strip_volatile(typedesc.ctype)
@@ -444,7 +444,7 @@ class RawMapper(object):
         type is given for an output or an inout parameter.
 
         :param type_container: an instance of :class:`ast.TypeContainer`
-        :param transformer: the :class:`~grust.gi.Transformer` object holding the parsed GIR
+        :param transformer: the :class:`~grust.giscanner.Transformer` object holding the parsed GIR
         """
         assert isinstance(type_container, ast.TypeContainer)
         actual_ctype = _normalize_call_signature_ctype(type_container)

@@ -17,8 +17,8 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 # 02110-1301  USA
 
-from ..gi import ast
-from ..gi import message
+from ..giscanner import ast
+from ..giscanner import message
 from ..mapping import RawMapper, MappingError
 
 class SysCrateWriter(object):

@@ -25,9 +25,9 @@ import sys
 from pkg_resources import resource_filename
 import mako
 from mako.lookup import Template, TemplateLookup
-from .gi.transformer import Transformer
-from .gi import message
-from .gi import utils
+from .giscanner.transformer import Transformer
+from .giscanner import message
+from .giscanner import utils
 from .generators.sys_crate import SysCrateWriter
 from .output import FileOutput, DirectOutput
 from . import __version__ as version

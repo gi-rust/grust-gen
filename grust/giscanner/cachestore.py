@@ -53,7 +53,7 @@ class CacheStore(object):
             return None
         else:
             cachedir = utils.get_user_cache_dir(
-                    os.path.join('grust-gen', 'gi'))
+                    os.path.join('grust-gen', 'giscanner'))
             return cachedir
 
     def _check_cache_version(self):
