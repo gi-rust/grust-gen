@@ -18,6 +18,11 @@
 # Boston, MA 02111-1307, USA.
 #
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
+
 import os
 import sys
 import subprocess
@@ -99,7 +104,7 @@ class Transformer(object):
     def register_include_uninstalled(self, include_path):
         basename = os.path.basename(include_path)
         if not basename.endswith('.gir'):
-            raise SystemExit("Include path %r must be a filename path "
+            raise SystemExit("Include path '%s' must be a filename path "
                              "ending in .gir" % (include_path, ))
         girname = basename[:-4]
         include = ast.Include.from_string(girname)
@@ -151,7 +156,8 @@ None."""
             path = os.path.join(d, girname)
             if os.path.exists(path):
                 return path
-        sys.stderr.write("Couldn't find include %r (search path: %r)\n" % (girname, searchdirs))
+        sys.stderr.write("Couldn't find include '%s' (search path: '%s')\n" %
+                         (girname, searchdirs))
         sys.exit(1)
 
     @classmethod
@@ -191,15 +197,18 @@ None."""
         """Return an iterator over all included namespaces; the
 currently-scanned namespace is first."""
         yield self._namespace
-        for ns in self._parsed_includes.itervalues():
+        for ns in self._parsed_includes.values():
             yield ns
 
-    def _sort_matches(self, x, y):
-        if x[0] is self._namespace:
-            return 1
-        elif y[0] is self._namespace:
-            return -1
-        return cmp(x[2], y[2])
+    def _sort_matches(self, val):
+        """Key sort which ensures items in self._namespace are last by returning
+        a tuple key starting with 1 for self._namespace entries and 0 for
+        everythin else.
+        """
+        if val[0] == self._namespace:
+            return 1, val[2]
+        else:
+            return 0, val[2]
 
     def _split_c_string_for_namespace_matches(self, name, is_identifier=False):
         if not is_identifier and self._symbol_filter_cmd:
@@ -233,8 +242,8 @@ currently-scanned namespace is first."""
             else:
                 unprefixed_namespaces.append(ns)
         if matches:
-            matches.sort(self._sort_matches)
-            return map(lambda x: (x[0], x[1]), matches)
+            matches.sort(key=self._sort_matches)
+            return list(map(lambda x: (x[0], x[1]), matches))
         elif self._accept_unprefixed:
             return [(self._namespace, name)]
         elif unprefixed_namespaces:
@@ -244,7 +253,7 @@ currently-scanned namespace is first."""
             for ns in unprefixed_namespaces:
                 if name in ns:
                     return [(ns, name)]
-        raise ValueError("Unknown namespace for %s %r"
+        raise ValueError("Unknown namespace for %s '%s'"
                          % ('identifier' if is_identifier else 'symbol', name, ))
 
     def split_ctype_namespaces(self, ident):
@@ -273,10 +282,11 @@ raise ValueError."""
                                     stdout=subprocess.PIPE,
                                     stderr=subprocess.PIPE,
                                     shell=True)
-            ident, err = proc.communicate(ident)
+            proc_ident, err = proc.communicate(ident.encode())
             if proc.returncode:
                 raise ValueError('filter: "%s" exited: %d with error: %s' %
                                  (self._identifier_filter_cmd, proc.returncode, err))
+            ident = proc_ident.decode('ascii')
 
         hidden = ident.startswith('_')
         if hidden:
@@ -292,7 +302,7 @@ raise ValueError."""
                 return name
         (ns, name) = matches[-1]
         raise TransformerException(
-            "Skipping foreign identifier %r from namespace %s" % (ident, ns.name, ))
+            "Skipping foreign identifier '%s' from namespace %s" % (ident, ns.name, ))
         return None
 
     def _strip_symbol(self, symbol):
@@ -541,7 +551,7 @@ Note that type resolution may not succeed."""
         # which has nominal namespace of "Meta", but a few classes are
         # "Mutter".  We don't export that data in introspection currently.
         # Basically the library should be fixed, but we'll hack around it here.
-        for namespace in self._parsed_includes.itervalues():
+        for namespace in self._parsed_includes.values():
             target = namespace.get_by_ctype(pointer_stripped)
             if target:
                 typeval.target_giname = '%s.%s' % (namespace.name, target.name)
@@ -614,7 +624,7 @@ Note that type resolution may not succeed."""
             if typenode.target.target_giname is not None:
                 typenode = self.lookup_giname(typenode.target.target_giname)
             elif typenode.target.target_fundamental is not None:
-                typenode = ast.type_names[typenode.target.target_fundamental]
+                typenode = typenode.target
             else:
                 break
         return typenode

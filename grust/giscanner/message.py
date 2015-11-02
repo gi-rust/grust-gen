@@ -20,8 +20,14 @@
 # 02110-1301, USA.
 #
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
+
 import os
 import sys
+import operator
 
 from . import utils
 
@@ -43,12 +49,34 @@ class Position(object):
         self.line = line
         self.column = column
 
-    def __cmp__(self, other):
-        return cmp((self.filename, self.line, self.column),
-                   (other.filename, other.line, other.column))
+    def _compare(self, other, op):
+        return op((self.filename, self.line, self.column),
+                  (other.filename, other.line, other.column))
+
+    def __lt__(self, other):
+        return self._compare(other, operator.lt)
+
+    def __gt__(self, other):
+        return self._compare(other, operator.gt)
+
+    def __ge__(self, other):
+        return self._compare(other, operator.ge)
+
+    def __le__(self, other):
+        return self._compare(other, operator.le)
+
+    def __eq__(self, other):
+        return self._compare(other, operator.eq)
+
+    def __ne__(self, other):
+        return self._compare(other, operator.ne)
+
+    def __hash__(self):
+        return hash((self.filename, self.line, self.column))
 
     def __repr__(self):
-        return '<Position %s:%d:%d>' % (os.path.basename(self.filename), self.line or -1,
+        return '<Position %s:%d:%d>' % (os.path.basename(self.filename),
+                                        self.line or -1,
                                         self.column or -1)
 
     def format(self, cwd):
@@ -176,7 +204,7 @@ class MessageLogger(object):
     def log_symbol(self, log_type, symbol, text):
         """Log a warning in the context of the given symbol."""
         self.log(log_type, text, symbol.position,
-                 prefix="symbol=%r" % (symbol.ident, ))
+                 prefix="symbol='%s'" % (symbol.ident, ))
 
 
 def log_node(log_type, node, text, context=None, positions=None):
@@ -191,6 +219,10 @@ def warn(text, positions=None, prefix=None, marker_pos=None, marker_line=None):
 
 def warn_node(node, text, context=None, positions=None):
     log_node(WARNING, node, text, context=context, positions=positions)
+
+
+def error_node(node, text, context=None, positions=None):
+    log_node(ERROR, node, text, context=context, positions=positions)
 
 
 def warn_symbol(symbol, text):

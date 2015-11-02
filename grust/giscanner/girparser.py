@@ -18,16 +18,22 @@
 # Boston, MA 02111-1307, USA.
 #
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
+
 import os
 
 from xml.etree.cElementTree import parse
 
 from . import ast
-from .collections import OrderedDict
 
 # In the original giscanner modules, this is imported from
 # giscanner.girwriter
 COMPATIBLE_GIR_VERSION = '1.2'
+
+from .collections import OrderedDict
 
 CORE_NS = "http://www.gtk.org/introspection/core/1.0"
 C_NS = "http://www.gtk.org/introspection/c/1.0"
@@ -316,7 +322,7 @@ class GIRParser(object):
             raise ValueError('node %r has no return-value' % (name, ))
         transfer = returnnode.attrib.get('transfer-ownership')
         nullable = returnnode.attrib.get('nullable') == '1'
-        retval = ast.Return(self._parse_type(returnnode), nullable, transfer)
+        retval = ast.Return(self._parse_type(returnnode), nullable, False, transfer)
         self._parse_generic_attribs(returnnode, retval)
         parameters = []
 
@@ -368,6 +374,9 @@ class GIRParser(object):
                     param.destroy_name = parameters[idx].argname
 
         self._parse_type_array_length(parameters, returnnode, retval.type)
+
+        # Re-set the function's parameters to notify it of changes to the list.
+        func.parameters = parameters
 
         self._parse_generic_attribs(node, func)
 
@@ -458,8 +467,8 @@ class GIRParser(object):
                 return ast.Type(ctype=ctype)
             elif name in ['GLib.List', 'GLib.SList']:
                 subchild = self._find_first_child(typenode,
-                                                  map(_corens, ('callback', 'array',
-                                                                'varargs', 'type')))
+                                                  list(map(_corens, ('callback', 'array',
+                                                                '    varargs', 'type'))))
                 if subchild is not None:
                     element_type = self._parse_type(typenode)
                 else:
@@ -467,7 +476,7 @@ class GIRParser(object):
                 return ast.List(name, element_type, ctype=ctype)
             elif name == 'GLib.HashTable':
                 subchildren = self._find_children(typenode, _corens('type'))
-                subchildren_types = map(self._parse_type_simple, subchildren)
+                subchildren_types = list(map(self._parse_type_simple, subchildren))
                 while len(subchildren_types) < 2:
                     subchildren_types.append(ast.TYPE_ANY)
                 return ast.Map(subchildren_types[0], subchildren_types[1], ctype=ctype)

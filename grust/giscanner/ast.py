@@ -19,7 +19,13 @@
 # Boston, MA 02111-1307, USA.
 #
 
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
+
 import copy
+import operator
 from itertools import chain
 
 from . import message
@@ -118,15 +124,37 @@ in contrast to the other create_type() functions."""
         assert self.target_giname is not None
         return self.target_giname.split('.')[1]
 
-    def __cmp__(self, other):
+    def _compare(self, other, op):
         if self.target_fundamental:
-            return cmp(self.target_fundamental, other.target_fundamental)
+            return op(self.target_fundamental, other.target_fundamental)
         elif self.target_giname:
-            return cmp(self.target_giname, other.target_giname)
+            return op(self.target_giname, other.target_giname)
         elif self.target_foreign:
-            return cmp(self.target_foreign, other.target_foreign)
+            return op(self.target_foreign, other.target_foreign)
         else:
-            return cmp(self.ctype, other.ctype)
+            return op(self.ctype, other.ctype)
+
+    def __lt__(self, other):
+        return self._compare(other, operator.lt)
+
+    def __gt__(self, other):
+        return self._compare(other, operator.gt)
+
+    def __ge__(self, other):
+        return self._compare(other, operator.ge)
+
+    def __le__(self, other):
+        return self._compare(other, operator.le)
+
+    def __eq__(self, other):
+        return self._compare(other, operator.eq)
+
+    def __ne__(self, other):
+        return self._compare(other, operator.ne)
+
+    def __hash__(self):
+        return hash((self.target_fundamental, self.target_giname,
+                     self.target_foreign, self.ctype))
 
     def is_equiv(self, typeval):
         """Return True if the specified types are compatible at
@@ -214,13 +242,17 @@ TYPE_FILENAME = Type(target_fundamental='filename', ctype='gchar*')
 
 TYPE_VALIST = Type(target_fundamental='va_list', ctype='va_list')
 
-BASIC_GIR_TYPES = [TYPE_BOOLEAN, TYPE_INT8, TYPE_UINT8, TYPE_INT16,
-                   TYPE_UINT16, TYPE_INT32, TYPE_UINT32, TYPE_INT64,
-                   TYPE_UINT64, TYPE_CHAR, TYPE_SHORT, TYPE_USHORT, TYPE_INT,
-                   TYPE_UINT, TYPE_LONG, TYPE_ULONG, TYPE_SIZE, TYPE_SSIZE,
-                   TYPE_LONG_LONG, TYPE_LONG_ULONG, TYPE_INTPTR, TYPE_UINTPTR,
-                   TYPE_FLOAT, TYPE_DOUBLE,
-                   TYPE_LONG_DOUBLE, TYPE_UNICHAR, TYPE_GTYPE]
+BASIC_TYPES = [TYPE_BOOLEAN, TYPE_INT8, TYPE_UINT8, TYPE_INT16,
+               TYPE_UINT16, TYPE_INT32, TYPE_UINT32, TYPE_INT64,
+               TYPE_UINT64, TYPE_CHAR, TYPE_SHORT, TYPE_USHORT, TYPE_INT,
+               TYPE_UINT, TYPE_LONG, TYPE_ULONG, TYPE_SIZE, TYPE_SSIZE,
+               TYPE_LONG_LONG, TYPE_LONG_ULONG,
+               TYPE_FLOAT, TYPE_DOUBLE,
+               TYPE_LONG_DOUBLE, TYPE_UNICHAR, TYPE_GTYPE]
+
+BASIC_GIR_TYPES = [TYPE_INTPTR, TYPE_UINTPTR]
+BASIC_GIR_TYPES.extend(BASIC_TYPES)
+
 GIR_TYPES = [TYPE_NONE, TYPE_ANY]
 GIR_TYPES.extend(BASIC_GIR_TYPES)
 GIR_TYPES.extend([TYPE_STRING, TYPE_FILENAME, TYPE_VALIST])
@@ -458,11 +490,11 @@ functions via get_by_symbol()."""
     def __iter__(self):
         return iter(self.names)
 
-    def iteritems(self):
-        return self.names.iteritems()
+    def items(self):
+        return self.names.items()
 
-    def itervalues(self):
-        return self.names.itervalues()
+    def values(self):
+        return self.names.values()
 
     def get(self, name):
         return self.names.get(name)
@@ -474,7 +506,7 @@ functions via get_by_symbol()."""
         return self.symbols.get(symbol)
 
     def walk(self, callback):
-        for node in self.itervalues():
+        for node in self.values():
             node.walk(callback, [])
 
 
@@ -488,11 +520,26 @@ class Include(object):
     def from_string(cls, string):
         return cls(*string.split('-', 1))
 
-    def __cmp__(self, other):
-        namecmp = cmp(self.name, other.name)
-        if namecmp != 0:
-            return namecmp
-        return cmp(self.version, other.version)
+    def _compare(self, other, op):
+        return op((self.name, self.version), (other.name, other.version))
+
+    def __lt__(self, other):
+        return self._compare(other, operator.lt)
+
+    def __gt__(self, other):
+        return self._compare(other, operator.gt)
+
+    def __ge__(self, other):
+        return self._compare(other, operator.ge)
+
+    def __le__(self, other):
+        return self._compare(other, operator.le)
+
+    def __eq__(self, other):
+        return self._compare(other, operator.eq)
+
+    def __ne__(self, other):
+        return self._compare(other, operator.ne)
 
     def __hash__(self):
         return hash(str(self))
@@ -548,14 +595,32 @@ GIName.  It's possible for nodes to contain or point to other nodes."""
         assert self.namespace is not None
         return Type(target_giname=('%s.%s' % (self.namespace.name, self.name)))
 
-    def __cmp__(self, other):
-        nscmp = cmp(self.namespace, other.namespace)
-        if nscmp != 0:
-            return nscmp
-        return cmp(self.name, other.name)
+    def _compare(self, other, op):
+        return op((self.namespace, self.name), (other.namespace, other.name))
+
+    def __lt__(self, other):
+        return self._compare(other, operator.lt)
+
+    def __gt__(self, other):
+        return self._compare(other, operator.gt)
+
+    def __ge__(self, other):
+        return self._compare(other, operator.ge)
+
+    def __le__(self, other):
+        return self._compare(other, operator.le)
+
+    def __eq__(self, other):
+        return self._compare(other, operator.eq)
+
+    def __ne__(self, other):
+        return self._compare(other, operator.ne)
+
+    def __hash__(self):
+        return hash((self.namespace, self.name))
 
     def __repr__(self):
-        return '%s(%r)' % (self.__class__.__name__, self.name)
+        return "%s('%s')" % (self.__class__.__name__, self.name)
 
     def inherit_file_positions(self, node):
         self.file_positions.update(node.file_positions)
@@ -599,6 +664,34 @@ class Callable(Node):
         self.instance_parameter = None  # Parameter
         self.parent = None  # A Class or Interface
 
+    def _get_retval(self):
+        return self._retval
+
+    def _set_retval(self, value):
+        self._retval = value
+        if self._retval is not None:
+            self._retval.parent = self
+    retval = property(_get_retval, _set_retval)
+
+    def _get_instance_parameter(self):
+        return self._instance_parameter
+
+    def _set_instance_parameter(self, value):
+        self._instance_parameter = value
+        if value is not None:
+            value.parent = self
+    instance_parameter = property(_get_instance_parameter,
+                                  _set_instance_parameter)
+
+    def _get_parameters(self):
+        return self._parameters
+
+    def _set_parameters(self, value):
+        self._parameters = value
+        for param in self._parameters:
+            param.parent = self
+    parameters = property(_get_parameters, _set_parameters)
+
     # Returns all parameters, including the instance parameter
     @property
     def all_parameters(self):
@@ -637,6 +730,8 @@ class Function(Callable):
         # copy the parameters array so a change to self.parameters does not
         # influence clone.parameters.
         clone.parameters = self.parameters[:]
+        for param in clone.parameters:
+            param.parent = clone
         return clone
 
     def is_type_meta_function(self):
@@ -750,10 +845,12 @@ class Alias(Node):
 class TypeContainer(Annotated):
     """A fundamental base class for Return and Parameter."""
 
-    def __init__(self, typenode, nullable, transfer):
+    def __init__(self, typenode, nullable, not_nullable, transfer, direction):
         Annotated.__init__(self)
         self.type = typenode
         self.nullable = nullable
+        self.not_nullable = not_nullable
+        self.direction = direction
         if transfer is not None:
             self.transfer = transfer
         elif typenode.is_const:
@@ -768,11 +865,12 @@ class Parameter(TypeContainer):
     def __init__(self, argname, typenode, direction=None,
                  transfer=None, nullable=False, optional=False,
                  allow_none=False, scope=None,
-                 caller_allocates=False):
-        TypeContainer.__init__(self, typenode, nullable, transfer)
+                 caller_allocates=False, not_nullable=False):
+        TypeContainer.__init__(self, typenode, nullable, not_nullable,
+                               transfer, direction)
         self.argname = argname
-        self.direction = direction
         self.optional = optional
+        self.parent = None  # A Callable
 
         if allow_none:
             if self.direction == PARAM_DIRECTION_OUT:
@@ -785,13 +883,19 @@ class Parameter(TypeContainer):
         self.closure_name = None
         self.destroy_name = None
 
+    @property
+    def name(self):
+        return self.argname
+
 
 class Return(TypeContainer):
     """A return value from a function."""
 
-    def __init__(self, rtype, nullable=False, transfer=None):
-        TypeContainer.__init__(self, rtype, nullable, transfer)
-        self.direction = PARAM_DIRECTION_OUT
+    def __init__(self, rtype, nullable=False, not_nullable=False,
+                 transfer=None):
+        TypeContainer.__init__(self, rtype, nullable, not_nullable, transfer,
+                               direction=PARAM_DIRECTION_OUT)
+        self.parent = None  # A Callable
 
 
 class Enum(Node, Registered):
@@ -848,11 +952,32 @@ class Member(Annotated):
         self.nick = nick
         self.parent = None
 
-    def __cmp__(self, other):
-        return cmp(self.name, other.name)
+    def _compare(self, other, op):
+        return op(self.name, other.name)
+
+    def __lt__(self, other):
+        return self._compare(other, operator.lt)
+
+    def __gt__(self, other):
+        return self._compare(other, operator.gt)
+
+    def __ge__(self, other):
+        return self._compare(other, operator.ge)
+
+    def __le__(self, other):
+        return self._compare(other, operator.le)
+
+    def __eq__(self, other):
+        return self._compare(other, operator.eq)
+
+    def __ne__(self, other):
+        return self._compare(other, operator.ne)
+
+    def __hash__(self):
+        return hash(self.name)
 
     def __repr__(self):
-        return '%s(%r)' % (self.__class__.__name__, self.name)
+        return "%s('%s')" % (self.__class__.__name__, self.name)
 
 
 class Compound(Node, Registered):
@@ -921,11 +1046,32 @@ class Field(Annotated):
         self.namespace = None
         self.parent = None  # a compound
 
-    def __cmp__(self, other):
-        return cmp(self.name, other.name)
+    def _compare(self, other, op):
+        return op(self.name, other.name)
+
+    def __lt__(self, other):
+        return self._compare(other, operator.lt)
+
+    def __gt__(self, other):
+        return self._compare(other, operator.gt)
+
+    def __ge__(self, other):
+        return self._compare(other, operator.ge)
+
+    def __le__(self, other):
+        return self._compare(other, operator.le)
+
+    def __eq__(self, other):
+        return self._compare(other, operator.eq)
+
+    def __ne__(self, other):
+        return self._compare(other, operator.ne)
+
+    def __hash__(self):
+        return hash(self.name)
 
     def __repr__(self):
-        return '%s(%r)' % (self.__class__.__name__, self.name)
+        return "%s('%s')" % (self.__class__.__name__, self.name)
 
 
 class Record(Compound):
