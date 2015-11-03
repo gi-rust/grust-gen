@@ -107,6 +107,9 @@ use gtypes::*;
             continue
         if node.name in self.attr.ignore_names:
             continue
+        if any(param.type == ast.TYPE_VALIST for param in node.parameters):
+            # Functions with a va_list parameter are usable only in C
+            continue
         functions.append(node)
     functions.sort(key=lambda node: node.symbol)
 %>
@@ -246,14 +249,11 @@ extern {
 ##
 <%def name="function(node)">\
 <%
-    if any(param.type == ast.TYPE_VALIST for param in node.parameters):
-        # Functions with a va_list parameter are usable only in C
-        return ''
-    parameters = list(node.all_parameters)
+    parameters = node.all_parameters
     param_list = []
     if len(parameters) > 0 and isinstance(parameters[-1].type, ast.Varargs):
+        parameters = parameters[:-1]
         param_list = ['...']
-        del parameters[-1]
     param_list[:0] = ['{name}: {type}'.format(
                         name=sanitize_ident(param.argname),
                         type=mapper.map_parameter_type(param))
