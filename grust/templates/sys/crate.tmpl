@@ -187,7 +187,7 @@ pub enum ${node.ctype} { }
         value_name_map[value] = to_camel_case(member.name)
     if len(value_name_map) == 1:
         # Work around https://github.com/rust-lang/rust/issues/10292
-        value = value_name_map.keys()[0]
+        value = list(value_name_map.keys())[0]
         dummy_value = 0 if value != 0 else 1
         value_name_map[dummy_value] = '_Dummy'
 %>\
