@@ -301,6 +301,50 @@ class Crate(object):
             self.local_name = name
         self.namespace = namespace
 
+class Module(object):
+    """Information on a Rust module.
+
+    Module description objects provide a way to segment the crate
+    namespace into modules. This is mostly useful for conditional
+    compilation of platform-specific symbols.
+    """
+
+    def __init__(self, name, symbols_match, cfg=None, toplevel_export=True):
+        """Construct a module description object.
+
+        :param name: name of the module
+        :param symbols_match: a :class:`grust.namematch.MatchList`
+            specifying the C function names to export in this module.
+        :param cfg: optional content for the ``#[cfg(...)]`` attribute
+            of the module
+        :param toplevel_export: a flag determining whether the names defined
+            in the module should be re-exported at the crate level
+        """
+        self.name = name
+        self.cfg = cfg
+        self._symbols_match = symbols_match
+        self.toplevel_export = toplevel_export
+        self.functions = []
+
+    def extract_functions(self, functions):
+        """Extract functions belonging to this module from the given list.
+
+        The function nodes are filtered accordingly to the
+        construction-time parameter `symbols_match`. The matching
+        nodes are added to the list attribute :attr:`functions` of this
+        object.
+        :param functions: an iterable of :class:`ast.Function` nodes
+        :return: list of function nodes remaining after extraction
+        """
+        mod_functions = [node for node in functions
+                         if node.symbol in self._symbols_match]
+        if len(mod_functions) == 0:
+            return functions
+        else:
+            self.functions.extend(mod_functions)
+            return [node for node in functions
+                    if node.symbol not in self._symbols_match]
+
 _ptr_const_patterns = (
     re.compile(r'^(?P<deref_type>.*[^ ]) +const *\*$'),
     re.compile(r'^const +(?P<deref_type>.*[^* ]) *\*$')
