@@ -1,7 +1,8 @@
 from setuptools import setup, find_packages
 
-with open('README.rst') as readme:
-    long_description = readme.read()
+def readme():
+    with open('README.rst') as f:
+        return f.read()
 
 setup(
     name='grust-gen',
@@ -9,7 +10,7 @@ setup(
     author='Mikhail Zabaluev',
     author_email='mikhail.zabaluev@gmail.com',
     description='Rust binding generator for GObject introspection',
-    long_description=long_description,
+    long_description=readme(),
     classifiers=[
         'Development Status :: 3 - Alpha',
         'Environment :: Console',
