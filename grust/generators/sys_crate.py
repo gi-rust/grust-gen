@@ -42,7 +42,7 @@ class SysCrateWriter(object):
             lambda node, chain: self._prepare_walk(node, chain))
 
     def write(self, output):
-        result = self._template.render(
+        result = self._template.render_unicode(
                     mapper=self._mapper,
                     message_positions=self._message_positions)
         output.write(result)

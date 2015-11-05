@@ -36,7 +36,7 @@ def output_file(name):
     if name == '-':
         return DirectOutput(sys.stdout)
     else:
-        return FileOutput(name)
+        return FileOutput(name, encoding='utf-8')
 
 def _create_arg_parser():
     parser = argparse.ArgumentParser(
@@ -63,7 +63,7 @@ def generator_main():
 
     output = opts.output
     if output is None:
-        output = FileOutput('lib.rs')
+        output = output_file('lib.rs')
 
     logger = message.MessageLogger.get()
     logger.enable_warnings((message.FATAL, message.ERROR, message.WARNING))
@@ -84,12 +84,12 @@ def generator_main():
                 os.path.join('grust-gen', 'template-modules' + py_suffix))
 
     tmpl_lookup = TemplateLookup(directories=[template_dir],
-                                 output_encoding='utf-8',
                                  module_directory=tmpl_module_dir)
     if opts.template is None:
         template = tmpl_lookup.get_template('/sys/crate.tmpl')
     else:
-        template = Template(filename=opts.template, lookup=tmpl_lookup)
+        template = Template(filename=opts.template,
+                            lookup=tmpl_lookup)
 
     gen = SysCrateWriter(transformer=transformer,
                          template=template,

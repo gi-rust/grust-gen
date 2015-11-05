@@ -17,9 +17,11 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
 # 02110-1301  USA
 
+import io
 import os
 import shutil
 import stat
+import sys
 import tempfile
 
 class FileOutput(object):
@@ -34,35 +36,64 @@ class FileOutput(object):
     exception has occurred, the temporary file is deleted.
     """
 
-    def __init__(self, filename, text=True):
+    def __init__(self, filename, mode='w', encoding=None, newline=None):
         """Create a :class:`FileOutput` object with the target file name.
+
+        :param filename: name of the eventual output file
+        :param mode: mode parameter to pass to `tempfile.NamedTemporaryFile`
+        :param encoding: character encoding as for func:`io.open`
+        :param newline: newline mode as for func:`io.open`
         """
         self._filename = os.path.abspath(filename)
-        self._text_mode = text
+        self._open_kwargs = {
+                'mode': mode,
+                'encoding': encoding,
+                'newline': newline
+            }
 
     def __enter__(self):
         dirname, basename = os.path.split(self._filename)
-        handle, name = tempfile.mkstemp(
-                dir=dirname,
-                prefix=basename,
-                suffix='.tmp',
-                text=self._text_mode)
-        mode = 'w' if self._text_mode else 'wb'
-        self._tmp_output = os.fdopen(handle, mode)
-        self._tmp_filename = name
-        if (os.path.isfile(self._filename)):
-            shutil.copystat(self._filename, self._tmp_filename)
+        if sys.version_info.major >= 3:
+            self._tempfile = tempfile.NamedTemporaryFile(
+                    dir=dirname,
+                    prefix=basename,
+                    delete=False,
+                    **self._open_kwargs)
         else:
-            os.chmod(self._tmp_filename,
-                     stat.S_IWUSR | stat.S_IRUSR | stat.S_IRGRP | stat.S_IROTH)
-        return self._tmp_output
+            # Can't use the file opened by tempfile.NamedTemporaryFile
+            # or tempfile.mkstemp() on Python 2.x because neither
+            # supports encoding and newline parameters. The io module
+            # does not interoperate with file objects produced by
+            # tempfile, either. The next best thing to do is to close
+            # the file and reopen it by name with io.open. This would
+            # add a security hazard in some rather unusual, already weak
+            # setups, but we rely on the file staying unchanged
+            # after being closed in the __exit__ handler as well, so no
+            # added risk here.
+            handle, name = tempfile.mkstemp(dir=dirname, prefix=basename)
+            os.close(handle)
+            self._tempfile = io.open(name, **self._open_kwargs)
+
+        try:
+            if (os.path.isfile(self._filename)):
+                shutil.copystat(self._filename, self._tempfile.name)
+            else:
+                os.chmod(self._tempfile.name,
+                         stat.S_IWUSR | stat.S_IRUSR
+                            | stat.S_IRGRP | stat.S_IROTH)
+        except Exception:
+            self._tempfile.close()
+            os.remove(self._tempfile.name)
+            raise
+
+        return self._tempfile
 
     def __exit__(self, exception_type, exception, traceback):
-        self._tmp_output.close()
-        if exception:
-            os.remove(self._tmp_filename)
+        self._tempfile.close()
+        if exception_type:
+            os.remove(self._tempfile.name)
         else:
-            os.rename(self._tmp_filename, self._filename)
+            os.rename(self._tempfile.name, self._filename)
         return False
 
 class DirectOutput(object):
