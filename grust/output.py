@@ -101,8 +101,8 @@ class DirectOutput(object):
 
     On exit from the runtime context, this context manager leaves the
     stream intact. This is useful to send the output to stdout in the
-    same ``with`` context where a :class:`FileOutput` may alternatively
-    be used.
+    same ``with`` context where a :class:`FileOutput` object may
+    alternatively be used.
     """
     def __init__(self, output):
         self._output = output
