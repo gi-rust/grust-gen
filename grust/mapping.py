@@ -375,7 +375,8 @@ def _strip_volatile(ctype):
         return match.group('base_type')
     return ctype
 
-def _normalize_call_signature_ctype(type_container):
+def _unwrap_call_signature_ctype(type_container):
+    prefix = ''
     ctype = type_container.type.ctype
     if ctype is None:
         raise MappingError('parameter {}: C type attribute is missing'.format(type_container.argname))
@@ -384,11 +385,11 @@ def _normalize_call_signature_ctype(type_container):
                                          ast.PARAM_DIRECTION_INOUT)
         and not type_container.caller_allocates):
         try:
-            ctype = _unwrap_pointer_ctype(ctype, allow_const=False)[1]
+            prefix, ctype = _unwrap_pointer_ctype(ctype, allow_const=False)
         except MappingError as e:
             message = 'parameter {}: {}'.format(type_container.argname, e)
             raise MappingError(message)
-    return _strip_volatile(ctype)
+    return prefix, _strip_volatile(ctype)
 
 def _is_fixed_size_array(typedesc):
     return (
@@ -480,7 +481,7 @@ class RawMapper(object):
         :param transformer: the :class:`~grust.giscanner.Transformer` object holding the parsed GIR
         """
         assert isinstance(type_container, ast.TypeContainer)
-        actual_ctype = _normalize_call_signature_ctype(type_container)
+        actual_ctype = _unwrap_call_signature_ctype(type_container)[1]
         return self._resolve_type_internal(type_container.type, actual_ctype,
                                            transformer)
 
@@ -731,9 +732,10 @@ class RawMapper(object):
         :return: a string with Rust syntax describing the type
         """
         assert isinstance(parameter, ast.Parameter)
-        actual_ctype = _normalize_call_signature_ctype(parameter)
-        return self._map_type(parameter.type, actual_ctype,
-                              nullable=parameter.nullable)
+        ptr_prefix, actual_ctype = _unwrap_call_signature_ctype(parameter)
+        return (ptr_prefix +
+                self._map_type(parameter.type, actual_ctype,
+                               nullable=parameter.nullable))
 
     def map_return_type(self, retval):
         """Return the Rust FFI type syntax for a function's return value.
