@@ -11,7 +11,7 @@ directory and run ``setup.py``::
 
   python setup.py install
 
-The `develop` command can also be used to set up the tool for in-tree
+The ``develop`` command can also be used to set up the tool for in-tree
 usage.
 
 .. _Rust: https://www.rust-lang.org/
