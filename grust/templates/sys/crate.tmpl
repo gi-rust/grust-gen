@@ -319,7 +319,7 @@ ${cfg_attr(mod.cfg)}\
 pub mod ${mod.name} {
     use gtypes::*;
     use super::*;
-%   for crate in mod.extern_crates:
+%   for crate in sorted(mod.extern_crates, key=lambda crate: crate.local_name):
     use ${crate.local_name};
 %   endfor
 ${_module_contents(mod.type_defs, mod.functions, mod.registered_types) | indenter(4)}\
