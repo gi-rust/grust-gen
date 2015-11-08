@@ -21,6 +21,16 @@ ignore_names = []
 # Set to true to ignore the get-type functions
 ignore_gtype_functions = False
 
+# Would have used textwrap.indent if not for Python 2
+def indent_lines(text, amount):
+    lines = [(' ' * amount + line)
+             if line and not line.isspace() else line
+             for line in text.splitlines(True)]
+    return ''.join(lines)
+
+def indenter(amount):
+    return lambda text: indent_lines(text, amount)
+
 %>\
 <%page args="mapper, message_positions"/>\
 <%
@@ -30,14 +40,6 @@ ignore_gtype_functions = False
         message.warn_node(node, text, positions=message_positions, context=node)
 
     def emit_node(tmpl, node, indent=0):
-
-        # Would have used textwrap.indent if not for Python 2
-        def indent_lines(text, indent):
-            lines = [(' ' * indent + line)
-                         if line and not line.isspace() else line
-                     for line in text.splitlines(True)]
-            return ''.join(lines)
-
         try:
             # Use capture to cull the template output
             # if a recoverable exception is raised.
@@ -72,7 +74,6 @@ extern crate ${xc.name} as ${xc.local_name};
 </%block>\
 
 use gtypes::*;
-
 <%block name="custom_types">\
 <%doc>Override to put your crate's custom type definitions here.</%doc>\
 </%block>\
@@ -88,27 +89,24 @@ use gtypes::*;
         ast.Bitfield: flags
     }
 
+    type_nodes = []
     for node in namespace.names.values():
         if node.foreign:
             continue
-        if node.__class__ in node_defs:
-            if node.ctype in self.attr.suppress_c_names:
-                continue
-            if node.name in self.attr.ignore_names:
-                continue
-            emit_node(node_defs[node.__class__], node)
-        elif isinstance(node, (ast.Function, ast.Signal, ast.Property)):
+        if isinstance(node, (ast.Function, ast.Signal, ast.Property)):
             continue
-        elif isinstance(node, ast.Union):
-            # Not supported, but can be suppressed
+        if node.__class__ in node_defs or isinstance(node, ast.Union):
             if node.ctype in self.attr.suppress_c_names:
                 continue
             if node.name in self.attr.ignore_names:
                 continue
-            warn(node,
-                 ('node type {} is not supported; consider suppressing'
-                  + ' and providing a custom definition')
-                    .format(node.__class__.__name__))
+            if node.__class__ in node_defs:
+                type_nodes.append(node)
+            else:
+                warn(node,
+                     'node type {} is not supported; consider suppressing'
+                        ' and providing a custom definition'
+                        .format(node.__class__.__name__))
         else:
             warn(node,
                  'node type {} is not supported'
@@ -117,8 +115,6 @@ use gtypes::*;
     functions = []
     for node in namespace.symbols.values():
         if not isinstance(node, ast.Function):
-            continue
-        if node.is_type_meta_function():
             continue
         if node.symbol in self.attr.suppress_c_names:
             continue
@@ -129,14 +125,17 @@ use gtypes::*;
             continue
         functions.append(node)
 
-    for mod in self.attr.modules:
-        functions = mod.extract_functions(functions)
+    registered_types = list(namespace.type_names.values())
 
-    functions.sort(key=lambda node: node.symbol)
-%>
+    for mod in self.attr.modules:
+        type_nodes = mod.extract_types(type_nodes)
+        functions = mod.extract_functions(functions)
+        registered_types = mod.extract_registered_types(registered_types)
+%>\
 <%block name="custom_constants">\
 <%doc>Override to put your crate's custom constant definitions here.</%doc>\
 </%block>\
+${_module_contents(type_nodes, functions, registered_types)}\
 <%block name="custom_extern">\
 <%doc>
   If your crate needs to link functions that are not emitted in the
@@ -144,20 +143,34 @@ use gtypes::*;
   block or blocks.
 </%doc>\
 </%block>\
-%   if not self.attr.ignore_gtype_functions:
-// GType functions
-${self.gtype_functions(namespace)}
-%   endif
-extern {
-<%
-    for node in functions:
-        emit_node(function, node, indent=4)
-%>\
-}
 %   for mod in self.attr.modules:
 
 ${module(mod)}\
 %   endfor
+##
+<%def name="_module_contents(type_nodes, functions, registered_types)"
+      buffered="True">\
+<%
+    for node in type_nodes:
+        emit_node(node_defs[node.__class__], node)
+%>\
+%   if not self.attr.ignore_gtype_functions:
+
+// GType functions
+${gtype_functions(registered_types, functions)}\
+<%
+        functions = filter(lambda node: not node.is_type_meta_function(),
+                           functions)
+%>\
+%   endif
+
+extern {
+<%
+    for node in sorted(functions, key=lambda node: node.symbol):
+        emit_node(function, node, indent=4)
+%>\
+}
+</%def>\
 ##
 <%def name="alias(node)">\
 <%
@@ -248,10 +261,13 @@ ${_enum_common(node, flags_member_const)}\
 pub const ${member.symbol}: guint = ${map_constant_value(ast.TYPE_UINT, member.value)};
 </%def>\
 ##
-<%def name="gtype_functions(namespace)">\
+<%def name="gtype_functions(type_nodes, functions)">\
 <%
     func_names = []
-    for node in namespace.type_names.values():
+
+    for node in type_nodes:
+        if not isinstance(node, ast.Registered):
+            continue
         name = node.get_type
         if name is None:
             continue
@@ -260,9 +276,11 @@ pub const ${member.symbol}: guint = ${map_constant_value(ast.TYPE_UINT, member.v
         if name == 'intern':
             continue
         func_names.append(name)
-    for node in namespace.symbols.values():
+
+    for node in functions:
         if isinstance(node, ast.Function) and node.is_type_meta_function():
             func_names.append(node.symbol)
+
     func_names.sort()
 %>\
 extern {
@@ -302,13 +320,7 @@ ${cfg_attr(mod.cfg)}\
 pub mod ${mod.name} {
     use gtypes::*;
     use super::*;
-
-    extern {
-<%
-    for node in sorted(mod.functions, key=lambda node: node.symbol):
-        emit_node(function, node, indent=8)
-%>\
-    }
+${_module_contents(mod.type_defs, mod.functions, mod.registered_types) | indenter(4)}\
 }
 %   if mod.toplevel_export:
 

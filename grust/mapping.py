@@ -267,6 +267,15 @@ def map_constant_value(value_type, value):
             return '{}i64 as {}'.format(value, value_type.target_fundamental)
     return value
 
+def node_defines_type(node):
+    """Returns true if the AST node defines a type.
+
+    All nodes defining types have attribute ``ctype`` with the
+    C language name for the type.
+    """
+    return isinstance(node, (ast.Alias, ast.Enum, ast.Bitfield, ast.Compound,
+                             ast.Class, ast.Interface, ast.Callback))
+
 class MappingError(Exception):
     """Raised when something cannot be represented in Rust.
 
@@ -309,41 +318,108 @@ class Module(object):
     compilation of platform-specific symbols.
     """
 
-    def __init__(self, name, symbols_match, cfg=None, toplevel_export=True):
+    def __init__(self,
+                 name,
+                 cfg=None,
+                 ctypes_match=[],
+                 symbols_match=[],
+                 toplevel_export=True):
         """Construct a module description object.
 
         :param name: name of the module
-        :param symbols_match: a :class:`grust.namematch.MatchList`
-            specifying the C function names to export in this module.
         :param cfg: optional content for the ``#[cfg(...)]`` attribute
             of the module
+        :param ctypes_match: a :class:`grust.namematch.MatchList` to match
+            name patterns of the C type names to export in this module.
+        :param symbols_match: a :class:`grust.namematch.MatchList` to match
+            name patterns of the C function names to export in this module.
         :param toplevel_export: a flag determining whether the names defined
             in the module should be re-exported at the crate level
         """
         self.name = name
         self.cfg = cfg
+        self._ctypes_match = ctypes_match
         self._symbols_match = symbols_match
         self.toplevel_export = toplevel_export
+        self.type_defs = []
         self.functions = []
+        self.registered_types = []
+
+    def extract_types(self, nodes):
+        """Extract nodes defining types that belong to this module.
+
+        This method is called with an iterable of AST nodes as the
+        parameter.
+        The nodes are filtered accordingly to the construction-time
+        parameter ``ctypes_match``. The matching nodes are added to
+        the list attribute :attr:`type_defs` of this object.
+
+        :param nodes: an iterable of :class:`ast.Node` objects
+        :return: list of nodes remaining after extraction
+        """
+        mod_nodes, remainder = self._extract_nodes(
+                nodes, self._ctypes_match,
+                filter_func=node_defines_type,
+                name_func=lambda node: node.ctype)
+        self.type_defs.extend(mod_nodes)
+        return remainder
+
+    def extract_registered_types(self, nodes):
+        """Extract nodes with registered types that belong to this module.
+
+        The nodes defining registered types may or may not be a subset
+        of the nodes selected for type definitions.
+        This method is called with an iterable of AST nodes as the
+        parameter.
+        The nodes are filtered accordingly to the construction-time
+        parameter ``ctypes_match``. The matching nodes are added to the
+        list attribute :attr:`registered_types` of this object.
+
+        :param nodes: an iterable of :class:`ast.Node` objects
+        :return: list of nodes remaining after extraction
+        """
+        mod_nodes, remainder = self._extract_nodes(
+                nodes, self._ctypes_match,
+                filter_func=lambda node: (
+                    isinstance(node, ast.Registered)
+                    and hasattr(node, 'ctype')
+                ),
+                name_func=lambda node: node.ctype)
+        self.registered_types.extend(mod_nodes)
+        return remainder
 
     def extract_functions(self, functions):
-        """Extract functions belonging to this module from the given list.
+        """Extract functions belonging to this module.
 
+        This method is called with an iterable of AST nodes as the
+        parameter.
         The function nodes are filtered accordingly to the
-        construction-time parameter `symbols_match`. The matching
-        nodes are added to the list attribute :attr:`functions` of this
-        object.
-        :param functions: an iterable of :class:`ast.Function` nodes
-        :return: list of function nodes remaining after extraction
+        construction-time parameter ``symbols_match``. The matching
+        nodes are added to the list attribute :attr:`functions` of
+        this object.
+
+        :param nodes: an iterable of :class:`ast.Node` objects
+        :return: list of nodes remaining after extraction
         """
-        mod_functions = [node for node in functions
-                         if node.symbol in self._symbols_match]
-        if len(mod_functions) == 0:
-            return functions
+        mod_functions, remainder = self._extract_nodes(
+                functions, self._symbols_match,
+                filter_func=lambda node: isinstance(node, ast.Function),
+                name_func=lambda node: node.symbol)
+        self.functions.extend(mod_functions)
+        return remainder
+
+    @staticmethod
+    def _extract_nodes(nodes, match_list, filter_func, name_func):
+        mod_nodes = [node for node in nodes
+                     if filter_func(node)
+                        and name_func(node) in match_list]
+        if len(mod_nodes) == 0:
+            remainder = nodes
         else:
-            self.functions.extend(mod_functions)
-            return [node for node in functions
-                    if node.symbol not in self._symbols_match]
+            remainder = [node for node in nodes
+                         if not filter_func(node)
+                            or name_func(node) not in match_list]
+        return mod_nodes, remainder
 
 _ptr_const_patterns = (
     re.compile(r'^(?P<deref_type>.*[^ ]) +const *\*$'),
