@@ -29,8 +29,7 @@ class SysCrateWriter(object):
                  template,
                  options,
                  gir_filename=None):
-        self._transformer = transformer
-        self._mapper = RawMapper(transformer.namespace)
+        self._mapper = RawMapper(transformer)
         self._template = template
         self._options = options
         if gir_filename:
@@ -38,7 +37,7 @@ class SysCrateWriter(object):
                     (message.Position(filename=gir_filename),))
         else:
             self._message_positions = set()
-        self._transformer.namespace.walk(
+        transformer.namespace.walk(
             lambda node, chain: self._prepare_walk(node, chain))
 
     def write(self, output):
@@ -49,36 +48,10 @@ class SysCrateWriter(object):
 
     def _prepare_walk(self, node, chain):
         try:
-            if isinstance(node, ast.Callable):
-                self._prepare_callable(node)
-            elif isinstance(node, ast.Compound):
-                self._prepare_compound(node)
-            elif isinstance(node, ast.Constant):
-                self._prepare_type(node.value_type)
-            elif isinstance(node, ast.Alias):
-                self._prepare_type(node.target)
-            elif isinstance(node, ast.Interface):
-                assert len(node.fields) == 0, \
-                    'Fields found in interface {}. Strange, huh?'.format(node.name)
+            self._mapper.resolve_types_for_node(node)
         except MappingError as e:
             message.error_node(node, e,
                                positions=self._message_positions,
                                context=node)
             return False
         return True
-
-    def _prepare_type(self, typedesc):
-        if typedesc is None:
-            return;
-        self._mapper.resolve_type(typedesc, self._transformer)
-
-    def _prepare_callable(self, node):
-        if not isinstance(node, (ast.Function, ast.Callback)):
-            return
-        for param in node.parameters:
-            self._mapper.resolve_call_signature_type(param, self._transformer)
-        self._mapper.resolve_call_signature_type(node.retval, self._transformer)
-
-    def _prepare_compound(self, node):
-        for field in node.fields:
-            self._prepare_type(field.type)

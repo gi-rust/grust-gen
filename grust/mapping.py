@@ -344,23 +344,36 @@ class Module(object):
         self.type_defs = []
         self.functions = []
         self.registered_types = []
+        self._extern_crates = set()
 
-    def extract_types(self, nodes):
+    extern_crates = property(
+            lambda self: iter(self._extern_crates),
+            doc="""An iterator over external crates referenced by the module.
+                """
+        )
+
+    def extract_types(self, nodes, mapper):
         """Extract nodes defining types that belong to this module.
 
         This method is called with an iterable of AST nodes as the
-        parameter.
+        first parameter.
         The nodes are filtered accordingly to the construction-time
         parameter ``ctypes_match``. The matching nodes are added to
         the list attribute :attr:`type_defs` of this object.
 
         :param nodes: an iterable of :class:`ast.Node` objects
+        :param mapper: a class:`RawMapper` object to extract information on
+                       crate imports
         :return: list of nodes remaining after extraction
         """
         mod_nodes, remainder = self._extract_nodes(
                 nodes, self._ctypes_match,
                 filter_func=node_defines_type,
                 name_func=lambda node: node.ctype)
+
+        for node in mod_nodes:
+            self._extern_crates |= mapper.resolve_types_for_node(node)
+
         self.type_defs.extend(mod_nodes)
         return remainder
 
@@ -388,23 +401,29 @@ class Module(object):
         self.registered_types.extend(mod_nodes)
         return remainder
 
-    def extract_functions(self, functions):
+    def extract_functions(self, functions, mapper):
         """Extract functions belonging to this module.
 
         This method is called with an iterable of AST nodes as the
-        parameter.
+        first parameter.
         The function nodes are filtered accordingly to the
         construction-time parameter ``symbols_match``. The matching
         nodes are added to the list attribute :attr:`functions` of
         this object.
 
         :param nodes: an iterable of :class:`ast.Node` objects
+        :param mapper: a class:`RawMapper` object to extract information on
+                       crate imports
         :return: list of nodes remaining after extraction
         """
         mod_functions, remainder = self._extract_nodes(
                 functions, self._symbols_match,
                 filter_func=lambda node: isinstance(node, ast.Function),
                 name_func=lambda node: node.symbol)
+
+        for node in mod_functions:
+            self._extern_crates |= mapper.resolve_types_for_node(node)
+
         self.functions.extend(mod_functions)
         return remainder
 
@@ -483,8 +502,9 @@ class RawMapper(object):
 
     A mapper object should be used in two passes over the AST: first,
     all types that need to be accounted for in the generated code are
-    *resolved* over an instance of :class:`grust.giscanner.Transformer` with
-    the parsed includes, using  :meth:`resolve_type` or
+    *resolved* over the associated instance of
+    :class:`grust.giscanner.Transformer` with the parsed includes,
+    using :meth:`resolve_types_for_node`, :meth:`resolve_type`, or
     :meth:`resolve_call_signature_type`.
     Then, during a code generation pass, *mapping* methods can be called
     to represent the GIR types in Rust syntax, using the cross-crate
@@ -494,8 +514,9 @@ class RawMapper(object):
     names resolved in the Rust code generated using the mapping methods.
     """
 
-    def __init__(self, namespace):
-        self.crate = self._create_crate(namespace)
+    def __init__(self, transformer):
+        self.transformer = transformer
+        self.crate = self._create_crate(transformer.namespace)
         self._extern_crates = {}  # namespace name -> Crate
         self._crate_libc = None
 
@@ -510,18 +531,62 @@ class RawMapper(object):
 
     def _register_namespace(self, namespace):
         if namespace == self.crate.namespace:
-            return
+            return set()
         name = namespace.name
-        if name not in self._extern_crates:
+        crate = self._extern_crates.get(name)
+        if not crate:
             crate = self._create_crate(namespace)
             self._extern_crates[name] = crate
+        return {crate}
 
-    def resolve_type(self, typedesc, transformer):
+    def resolve_types_for_node(self, node):
+        """Resolve type imports for an AST node.
+
+        If the node definition refers to types defined in other
+        namespaces, this method ensures that ``extern crate`` entries
+        corresponding to the namespace exist in `self`. The set of
+        crates referenced in the node definition is also returned.
+
+        :param node: an instance of :class:`ast.Node`
+        :return: Set of :class:`Crate` objects describing the
+                 referenced crates.
+        """
+        if isinstance(node, ast.Callable):
+            return self._resolve_callable(node)
+        elif isinstance(node, ast.Compound):
+            return self._resolve_compound(node)
+        elif isinstance(node, ast.Constant):
+            return self.resolve_type(node.value_type)
+        elif isinstance(node, ast.Alias):
+            return self.resolve_type(node.target)
+        elif isinstance(node, ast.Interface):
+            assert len(node.fields) == 0, \
+                'Fields found in interface {}. Strange, huh?'.format(node.name)
+        return set()
+
+    def _resolve_callable(self, node):
+        if not isinstance(node, (ast.Function, ast.Callback)):
+            return set()
+        crates = set()
+        for param in node.parameters:
+            crates |= self.resolve_call_signature_type(param)
+        crates |= self.resolve_call_signature_type(node.retval)
+        return crates
+
+    def _resolve_compound(self, node):
+        crates = set()
+        for field in node.fields:
+            if field.type is not None:
+                crates |= self.resolve_type(field.type)
+        return crates
+
+    def resolve_type(self, typedesc):
         """Resolve type imports for a type description.
 
         If the type signature refers to a type defined in another
         namespace, this method ensures that an ``extern crate`` entry
-        corresponding to the namespace exists in `self`.
+        corresponding to the namespace exists in `self`. The set of
+        crates referenced in the type signature is also returned.
 
         Most fundamental types are mapped to their namesakes defined
         in crate ``gtypes`` and hence don't need any specific imports,
@@ -538,14 +603,14 @@ class RawMapper(object):
         type container objects in the signature of a function.
 
         :param typedesc: an instance of :class:`ast.Type`
-        :param transformer: the :class:`~grust.giscanner.Transformer` object holding the parsed GIR
+        :return: Set of :class:`Crate` objects describing the
+                 referenced crates.
         """
         assert isinstance(typedesc, ast.Type)
         actual_ctype = _strip_volatile(typedesc.ctype)
-        return self._resolve_type_internal(typedesc, actual_ctype,
-                                           transformer)
+        return self._resolve_type_internal(typedesc, actual_ctype)
 
-    def resolve_call_signature_type(self, type_container, transformer):
+    def resolve_call_signature_type(self, type_container):
         """Resolve type imports for a function parameter or a return value.
 
         This works like :meth:`resolve_type`, with the difference that
@@ -554,53 +619,55 @@ class RawMapper(object):
         type is given for an output or an inout parameter.
 
         :param type_container: an instance of :class:`ast.TypeContainer`
-        :param transformer: the :class:`~grust.giscanner.Transformer` object holding the parsed GIR
+        :return: Set of :class:`Crate` objects describing the
+                 referenced crates.
         """
         assert isinstance(type_container, ast.TypeContainer)
         actual_ctype = _unwrap_call_signature_ctype(type_container)[1]
-        return self._resolve_type_internal(type_container.type, actual_ctype,
-                                           transformer)
+        return self._resolve_type_internal(type_container.type, actual_ctype)
 
-    def _resolve_type_internal(self, typedesc, actual_ctype, transformer):
+    def _resolve_type_internal(self, typedesc, actual_ctype):
         if actual_ctype in ffi_basic_types:
-            return
+            return set()
 
         if isinstance(typedesc, ast.Array):
-            self._resolve_array(typedesc, actual_ctype, transformer)
+            return self._resolve_array(typedesc, actual_ctype)
         elif isinstance(typedesc, ast.List):
-            self._resolve_giname(typedesc.name, transformer)
+            return self._resolve_giname(typedesc.name)
         elif isinstance(typedesc, ast.Map):
-            self._resolve_giname('GLib.HashTable', transformer)
+            return self._resolve_giname('GLib.HashTable')
         elif typedesc.target_fundamental:
-            self._resolve_fundamental_type(typedesc.target_fundamental,
-                                           actual_ctype)
+            return self._resolve_fundamental_type(typedesc.target_fundamental,
+                                                  actual_ctype)
         elif typedesc.target_giname:
-            self._resolve_giname(typedesc.target_giname, transformer)
+            return self._resolve_giname(typedesc.target_giname)
         else:
             raise MappingError("can't represent type {}".format(typedesc))
 
     def _resolve_fundamental_type(self, typename, ctype):
-        if self._crate_libc is not None:
-            return
+        crates = set()
         if ctype in libc_types:
-            self._crate_libc = Crate('libc')
+            if self._crate_libc is None:
+                self._crate_libc = Crate('libc')
+            crates.add(self._crate_libc)
+        return crates
 
-    def _resolve_giname(self, name, transformer):
-        typenode = transformer.lookup_giname(name)
+    def _resolve_giname(self, name):
+        typenode = self.transformer.lookup_giname(name)
         if not typenode:
             raise ConsistencyError('reference to undefined type {}'.format(name))
-        self._register_namespace(typenode.namespace)
+        return self._register_namespace(typenode.namespace)
 
-    def _resolve_array(self, typedesc, actual_ctype, transformer):
+    def _resolve_array(self, typedesc, actual_ctype):
         if typedesc.array_type == ast.Array.C:
             if typedesc.size is None:
                 element_ctype = _unwrap_pointer_ctype(actual_ctype)[1]
             else:
                 element_ctype = typedesc.element_type.ctype
-            self._resolve_type_internal(typedesc.element_type, element_ctype,
-                                        transformer)
+            return self._resolve_type_internal(typedesc.element_type,
+                                               element_ctype)
         else:
-            self._resolve_giname(typedesc.array_type, transformer)
+            return self._resolve_giname(typedesc.array_type)
 
     def extern_crates(self):
         """Return an iterator over the extern crate descriptions.
