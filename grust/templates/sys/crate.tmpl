@@ -293,7 +293,13 @@ extern {
 <%
     parameters = node.all_parameters
     param_list = []
-    if len(parameters) > 0 and isinstance(parameters[-1].type, ast.Varargs):
+    if node.throws:
+        errparam_name = 'error'
+        while errparam_name in [param.argname for param in parameters]:
+            errparam_name += '_'
+        errparam_type = mapper.map_gerror_parameter_type()
+        param_list = ['{}: {}'.format(errparam_name, errparam_type)]
+    elif len(parameters) > 0 and isinstance(parameters[-1].type, ast.Varargs):
         parameters = parameters[:-1]
         param_list = ['...']
     param_list[:0] = ['{name}: {type}'.format(

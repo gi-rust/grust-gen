@@ -571,6 +571,10 @@ class RawMapper(object):
         for param in node.parameters:
             crates |= self.resolve_call_signature_type(param)
         crates |= self.resolve_call_signature_type(node.retval)
+        if node.throws:
+            # XXX: hope GLib is included, otherwise a ConsistencyError
+            # will be raised
+            crates |= self._resolve_giname('GLib.Error')
         return crates
 
     def _resolve_compound(self, node):
@@ -880,6 +884,16 @@ class RawMapper(object):
                 self._map_type(parameter.type, actual_ctype,
                                nullable=parameter.nullable))
 
+    def map_gerror_parameter_type(self):
+        """Return the Rust FFI type syntax for the **GError parameter.
+
+        This parameter is implied in signatures of throwing functions.
+
+        :return: a string with Rust syntax describing the type
+        """
+        return ('*mut *mut '
+                + self._map_introspected_type('GLib.Error', 'GError'))
+
     def map_return_type(self, retval):
         """Return the Rust FFI type syntax for a function's return value.
 
@@ -899,6 +913,8 @@ class RawMapper(object):
         assert isinstance(callback, ast.Callback)
         param_list = [self.map_parameter_type(param)
                       for param in callback.parameters]
+        if callback.throws:
+            param_list.append(self.map_gerror_parameter_type())
         syntax = 'extern "C" fn ({})'.format(', '.join(param_list))
         if callback.retval.type != ast.TYPE_NONE:
             syntax += ' -> {}'.format(self.map_return_type(callback.retval))
