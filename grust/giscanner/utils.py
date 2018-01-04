@@ -159,7 +159,7 @@ def get_libtool_command(options):
         libtool_cmd = 'glibtool'
     try:
         subprocess.check_call([libtool_cmd, '--version'],
-                              stdout=open(os.devnull))
+                              stdout=open(os.devnull, 'w'))
     except (subprocess.CalledProcessError, OSError):
         # If libtool's not installed, assume we don't need it
         return None
@@ -228,7 +228,7 @@ def makedirs(name, mode=0o777, exist_ok=False):
     if head and tail and not os.path.exists(head):
         try:
             makedirs(head, mode, exist_ok)
-        except OSError as e:
+        except (IOError, OSError) as e:
             # be happy if someone already created the path
             if e.errno != errno.EEXIST:
                 raise
@@ -236,7 +236,7 @@ def makedirs(name, mode=0o777, exist_ok=False):
             return
     try:
         os.mkdir(name, mode)
-    except OSError as e:
+    except (IOError, OSError) as e:
         if not exist_ok or e.errno != errno.EEXIST or not os.path.isdir(name):
             raise
 
