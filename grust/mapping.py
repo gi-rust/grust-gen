@@ -41,45 +41,50 @@ versions of a GObject namespace on crates.io.
 import re
 from .giscanner import ast
 
-ffi_basic_types = {}
-for name in ('gpointer', 'gconstpointer', 'gboolean', 'gchar', 'gshort',
-             'gushort', 'gint', 'guint', 'glong', 'gulong', 'gsize', 'gssize',
-             'gintptr', 'guintptr', 'gfloat', 'gdouble', 'gunichar', 'GType'):
-    ffi_basic_types[name] = name
-ffi_basic_types['gint8']   = 'i8'
-ffi_basic_types['guint8']  = 'u8'
-ffi_basic_types['gint16']  = 'i16'
-ffi_basic_types['guint16'] = 'u16'
-ffi_basic_types['gint32']  = 'i32'
-ffi_basic_types['guint32'] = 'u32'
-ffi_basic_types['gint64']  = 'i64'
-ffi_basic_types['guint64'] = 'u64'
+def _basic_types():
+    types = {}
+    for name in (
+            'gboolean', 'gchar', 'gshort', 'gushort', 'gint', 'guint',
+            'glong', 'gulong', 'gpointer', 'gconstpointer',
+            'gsize', 'gssize', 'gintptr', 'guintptr',
+            'gfloat', 'gdouble', 'gunichar', 'GType'):
+        types[name] = name
+    for bits in ['8', '16', '32', '64']:
+        types['gint' + bits] = 'i' + bits
+        types['guint' + bits] = 'u' + bits
 
-# GIR introspects char pointers as either 'utf8' or 'filename',
-# and we'd lose constness mapping those to the FFI pointer type
-# '*mut gchar'. Instead, put a direct mapping here.
-ffi_basic_types['const gchar*'] = '*const gchar'
-ffi_basic_types['const char*']  = '*const gchar'
+    # GIR introspects char pointers as either 'utf8' or 'filename',
+    # and we'd lose constness mapping those to the FFI pointer type
+    # '*mut gchar'. Instead, put a direct mapping here.
+    types['const gchar*'] = '*const gchar'
+    types['const char*'] = '*const gchar'
 
-# Workaround for gobject-introspection bug #756009
-ffi_basic_types['gchar**'] = '*mut *mut gchar'
-ffi_basic_types['char**']  = '*mut *mut gchar'
-ffi_basic_types['const gchar**'] = '*mut *const gchar'
-ffi_basic_types['const char**']  = '*mut *const gchar'
-ffi_basic_types['const gchar* const*'] = '*const *const gchar'
-ffi_basic_types['const char* const*']  = '*const *const gchar'
+    # Workaround for gobject-introspection bug #756009
+    types['gchar**'] = '*mut *mut gchar'
+    types['char**'] = '*mut *mut gchar'
+    types['const gchar**'] = '*mut *const gchar'
+    types['const char**'] = '*mut *const gchar'
+    types['const gchar* const*'] = '*const *const gchar'
+    types['const char* const*'] = '*const *const gchar'
+    return types
+
+ffi_basic_types = _basic_types()
 
 # Another lossy mapping performed by GIR scanner is transmutation
 # of OS-specific types to some guess at their built-in C type
 # representation. We can do better and resolve those as libc
 # imports. The same lookup works for 'long long' and
 # 'unsigned long long'.
-libc_types = {}
-for t in ('size_t', 'ssize_t', 'time_t', 'off_t', 'pid_t', 'uid_t', 'gid_t',
-          'dev_t', 'socklen_t'):
-    libc_types[t] = t
-libc_types['long long'] = 'c_longlong'
-libc_types['unsigned long long'] = 'c_ulonglong'
+def _libc_types():
+    types = {}
+    for name in ('size_t', 'ssize_t', 'time_t', 'off_t', 'pid_t',
+                 'uid_t', 'gid_t', 'dev_t', 'socklen_t'):
+        types[name] = name
+    types['long long'] = 'c_longlong'
+    types['unsigned long long'] = 'c_ulonglong'
+    return types
+
+libc_types = _libc_types()
 
 unsigned_types = (
     ast.TYPE_USHORT, ast.TYPE_UINT, ast.TYPE_ULONG,
@@ -144,9 +149,9 @@ def to_camel_case(name):
     prefixed with an underscore.
     """
     name = _snake_break_pat.sub(
-            lambda m: m.group(2).upper(), name)
+        lambda m: m.group(2).upper(), name)
     name = _digit_letter_pat.sub(
-            lambda m: m.group(1) + m.group(2).upper(), name)
+        lambda m: m.group(1) + m.group(2).upper(), name)
     if name[:1].isdigit():
         name = '_' + name
     return sanitize_ident(name)
@@ -168,15 +173,15 @@ def sys_crate_name(namespace):
     :return: a string with the crate name.
     """
     return '{name}_{version}_sys'.format(
-            name=_sanitize_crate_name_chars(namespace.name),
-            version=_sanitize_crate_name_chars(namespace.version))
+        name=_sanitize_crate_name_chars(namespace.name),
+        version=_sanitize_crate_name_chars(namespace.version))
 
 _bytestring_escape_pat = re.compile(r'(["\\])')
 
-def escape_bytestring(s):
+def escape_bytestring(content):
     """Escape byte string to have valid syntax for Rust bytestring content.
     """
-    return _bytestring_escape_pat.sub(r'\\\1', s)
+    return _bytestring_escape_pat.sub(r'\\\1', content)
 
 _integer_constant_pat = re.compile(r'-?\d+$')
 
@@ -201,38 +206,44 @@ class SizedIntTypeInfo(object):
         self.signed = signed
 
     @classmethod
-    def _get_map(cls):
+    def build_map(cls):
         type_map = {}
-        for w in (8, 16, 32, 64):
-            suffix = str(w)
-            type_map['gint'  + suffix] = cls(bit_width=w, signed=True)
-            type_map['guint' + suffix] = cls(bit_width=w, signed=False)
+        for width in (8, 16, 32, 64):
+            suffix = str(width)
+            type_map['gint'  + suffix] = cls(bit_width=width, signed=True)
+            type_map['guint' + suffix] = cls(bit_width=width, signed=False)
         return type_map
 
-    def fits(self, in_value):
-        value = int(in_value)
-        w = self.bit_width
+    def _fit_int_value(self, value):
+        value = int(value)
+        width = self.bit_width
         if self.signed:
-            return -2**(w - 1) <= value <= 2**(w - 1) - 1
+            fits = -2 ** (width - 1) <= value <= 2 ** (width - 1) - 1
         else:
-            return 0 <= value <= 2**w - 1
+            fits = 0 <= value <= 2 ** width - 1
+        return fits, value
 
-    def convert(self, in_value):
-        value = int(in_value)
-        if self.fits(value):
-            return in_value
-        w = self.bit_width
-        if self.signed and value <= 2**w - 1:
+    def fits(self, value):
+        fits, _ = self._fit_int_value(value)
+        return fits
+
+    def convert(self, value):
+        fits, int_value = self._fit_int_value(value)
+        if fits:
+            return value
+        width = self.bit_width
+        if self.signed and int_value <= 2 ** width - 1:
             # The value is within the bit width, but out of the range of
             # the target signed type. Do a twos-complement conversion on it.
-            value -= 2**w
-            return str(value)
+            int_value -= 2 ** width
+            value = str(int_value)
         else:
             # The value is out of bit width for the target type.
             # Just emit it as is and hope Rust knows how to deal with it.
-            return in_value
+            pass
+        return value
 
-sized_int_types = SizedIntTypeInfo._get_map()
+sized_int_types = SizedIntTypeInfo.build_map()
 
 def map_constant_value(value_type, value):
     """Return Rust representation of a constant value for a given type.
@@ -304,7 +315,8 @@ class Crate(object):
         assert is_ident(name), 'crate name "{}" is not an identifier'.format(name)
         self.name = name
         if local_name is not None:
-            assert is_ident(local_name), 'crate import name "{}" is not an identifier'.format(local_name)
+            assert is_ident(local_name), \
+                'crate import name "{}" is not an identifier'.format(local_name)
             self.local_name = local_name
         else:
             self.local_name = name
@@ -321,8 +333,8 @@ class Module(object):
     def __init__(self,
                  name,
                  cfg=None,
-                 ctypes_match=[],
-                 symbols_match=[],
+                 ctypes_match=None,
+                 symbols_match=None,
                  toplevel_export=True):
         """Construct a module description object.
 
@@ -338,8 +350,8 @@ class Module(object):
         """
         self.name = name
         self.cfg = cfg
-        self._ctypes_match = ctypes_match
-        self._symbols_match = symbols_match
+        self._ctypes_match = ctypes_match or []
+        self._symbols_match = symbols_match or []
         self.toplevel_export = toplevel_export
         self.type_defs = []
         self.functions = []
@@ -347,10 +359,9 @@ class Module(object):
         self._extern_crates = set()
 
     extern_crates = property(
-            lambda self: iter(self._extern_crates),
-            doc="""An iterator over external crates referenced by the module.
-                """
-        )
+        lambda self: iter(self._extern_crates),
+        doc="""An iterator over external crates referenced by the module.
+            """)
 
     def extract_types(self, nodes, mapper):
         """Extract nodes defining types that belong to this module.
@@ -367,9 +378,9 @@ class Module(object):
         :return: list of nodes remaining after extraction
         """
         mod_nodes, remainder = self._extract_nodes(
-                nodes, self._ctypes_match,
-                filter_func=node_defines_type,
-                name_func=lambda node: node.ctype)
+            nodes, self._ctypes_match,
+            filter_func=node_defines_type,
+            name_func=lambda node: node.ctype)
 
         for node in mod_nodes:
             self._extern_crates |= mapper.resolve_types_for_node(node)
@@ -392,12 +403,12 @@ class Module(object):
         :return: list of nodes remaining after extraction
         """
         mod_nodes, remainder = self._extract_nodes(
-                nodes, self._ctypes_match,
-                filter_func=lambda node: (
-                    isinstance(node, ast.Registered)
-                    and hasattr(node, 'ctype')
-                ),
-                name_func=lambda node: node.ctype)
+            nodes, self._ctypes_match,
+            filter_func=lambda node: (
+                isinstance(node, ast.Registered)
+                and hasattr(node, 'ctype')
+            ),
+            name_func=lambda node: node.ctype)
         self.registered_types.extend(mod_nodes)
         return remainder
 
@@ -417,9 +428,9 @@ class Module(object):
         :return: list of nodes remaining after extraction
         """
         mod_functions, remainder = self._extract_nodes(
-                functions, self._symbols_match,
-                filter_func=lambda node: isinstance(node, ast.Function),
-                name_func=lambda node: node.symbol)
+            functions, self._symbols_match,
+            filter_func=lambda node: isinstance(node, ast.Function),
+            name_func=lambda node: node.symbol)
 
         for node in mod_functions:
             self._extern_crates |= mapper.resolve_types_for_node(node)
@@ -430,14 +441,14 @@ class Module(object):
     @staticmethod
     def _extract_nodes(nodes, match_list, filter_func, name_func):
         mod_nodes = [node for node in nodes
-                     if filter_func(node)
-                        and name_func(node) in match_list]
-        if len(mod_nodes) == 0:
+                     if (filter_func(node)
+                         and name_func(node) in match_list)]
+        if not mod_nodes:
             remainder = nodes
         else:
             remainder = [node for node in nodes
-                         if not filter_func(node)
-                            or name_func(node) not in match_list]
+                         if (not filter_func(node)
+                             or name_func(node) not in match_list)]
         return mod_nodes, remainder
 
 _ptr_const_patterns = (
@@ -474,15 +485,16 @@ def _unwrap_call_signature_ctype(type_container):
     prefix = ''
     ctype = type_container.type.ctype
     if ctype is None:
-        raise MappingError('parameter {}: C type attribute is missing'.format(type_container.argname))
+        raise MappingError('parameter {}: C type attribute is missing'
+                           .format(type_container.argname))
     if (isinstance(type_container, ast.Parameter)
-        and type_container.direction in (ast.PARAM_DIRECTION_OUT,
-                                         ast.PARAM_DIRECTION_INOUT)
-        and not type_container.caller_allocates):
+            and type_container.direction in (
+                ast.PARAM_DIRECTION_OUT, ast.PARAM_DIRECTION_INOUT)
+            and not type_container.caller_allocates):
         try:
             prefix, ctype = _unwrap_pointer_ctype(ctype, allow_const=False)
-        except MappingError as e:
-            message = 'parameter {}: {}'.format(type_container.argname, e)
+        except MappingError as err:
+            message = 'parameter {}: {}'.format(type_container.argname, err)
             raise MappingError(message)
     return prefix, _strip_volatile(ctype)
 
@@ -494,7 +506,7 @@ def _is_fixed_size_array(typedesc):
     )
 
 class RawMapper(object):
-    """State and methods for mapping GI entities to Rust FFI and -sys crates. 
+    """State and methods for mapping GI entities to Rust FFI and -sys crates.
 
     This class provides a configurable mapping from GObject
     introspection entities to the information on Rust crates, Cargo packages,
@@ -520,9 +532,8 @@ class RawMapper(object):
         self._extern_crates = {}  # namespace name -> Crate
         self._crate_libc = None
 
-    def _create_crate(self, namespace):
-        # This is a method, to allow per-namespace configuration
-        # with overridable names later
+    @staticmethod
+    def _create_crate(namespace):
         name = sys_crate_name(namespace)
         local_name = sanitize_ident(namespace.name.lower())
         if local_name == 'libc':
@@ -560,8 +571,8 @@ class RawMapper(object):
         elif isinstance(node, ast.Alias):
             return self.resolve_type(node.target)
         elif isinstance(node, ast.Interface):
-            assert len(node.fields) == 0, \
-                'Fields found in interface {}. Strange, huh?'.format(node.name)
+            assert not node.fields, \
+                'Fields unexpectedly found in interface {}'.format(node.name)
         return set()
 
     def _resolve_callable(self, node):
@@ -641,14 +652,13 @@ class RawMapper(object):
         elif isinstance(typedesc, ast.Map):
             return self._resolve_giname('GLib.HashTable')
         elif typedesc.target_fundamental:
-            return self._resolve_fundamental_type(typedesc.target_fundamental,
-                                                  actual_ctype)
+            return self._resolve_fundamental_type(actual_ctype)
         elif typedesc.target_giname:
             return self._resolve_giname(typedesc.target_giname)
         else:
             raise MappingError("can't represent type {}".format(typedesc))
 
-    def _resolve_fundamental_type(self, typename, ctype):
+    def _resolve_fundamental_type(self, ctype):
         crates = set()
         if ctype in libc_types:
             if self._crate_libc is None:
@@ -680,8 +690,9 @@ class RawMapper(object):
         which comes last when required.
         :return: an iterator of `Crate` objects.
         """
-        for xc in sorted(self._extern_crates.values(), key=lambda xc: xc.name):
-            yield xc
+        for ext_crate in sorted(self._extern_crates.values(),
+                                key=lambda xc: xc.name):
+            yield ext_crate
         if self._crate_libc:
             yield self._crate_libc
 
@@ -691,17 +702,17 @@ class RawMapper(object):
             if ns_name == self.crate.namespace.name:
                 crate = self.crate
             else:
-                assert ns_name in self._extern_crates, (
-                        '{} refers to an unresolved namespace;'
-                        + ' has the type been resolved?'
-                        ).format(giname)
+                assert ns_name in self._extern_crates, \
+                    ('{} refers to an unresolved namespace;'
+                     + ' has the type been resolved?'
+                    ).format(giname)
                 crate = self._extern_crates[ns_name]
         else:
             crate = self.crate
             nqname = giname
-        assert nqname in crate.namespace.names, (
-                '{} is not found in namespace {}'
-                ).format(nqname, crate.namespace.name)
+        assert nqname in crate.namespace.names, \
+            '{} is not found in namespace {}'.format(
+                nqname, crate.namespace.name)
         return (crate, nqname)
 
     def _map_type(self, typedesc, actual_ctype=None, nullable=False):
@@ -710,11 +721,11 @@ class RawMapper(object):
         assert actual_ctype or typedesc.target_giname, 'C type not found for {!r}'.format(typedesc)
 
         if (actual_ctype in ffi_basic_types
-            and not _is_fixed_size_array(typedesc)):
+                and not _is_fixed_size_array(typedesc)):
             # If the C type for anything is usable directly in FFI,
             # that's all we need. The C type is bogus on fixed-size arrays
             # though, see gobject-introspection bug 756122.
-            return ffi_basic_types[actual_ctype];
+            return ffi_basic_types[actual_ctype]
 
         if isinstance(typedesc, ast.Array):
             return self._map_array(typedesc, actual_ctype)
@@ -734,10 +745,11 @@ class RawMapper(object):
 
     def _map_fundamental_type(self, typename, ctype):
         if ctype in libc_types:
-            assert self._crate_libc, 'the fundamental type "{}" should have been resolved first'.format(typename)
+            assert self._crate_libc, \
+                'the fundamental type "{}" should have been resolved first'.format(typename)
             return '{crate}::{name}'.format(
-                    crate=self._crate_libc.local_name,
-                    name=libc_types[ctype])
+                crate=self._crate_libc.local_name,
+                name=libc_types[ctype])
         elif typename in ffi_basic_types:
             return ffi_basic_types[typename]
         elif typename in ('utf8', 'filename'):
@@ -774,10 +786,10 @@ class RawMapper(object):
 
         if crate == self.crate:
             syntax = '{ptr}{name}'.format(
-                    ptr=ptr_prefix, name=ctype)
+                ptr=ptr_prefix, name=ctype)
         else:
             syntax = '{ptr}{crate}::{name}'.format(
-                    ptr=ptr_prefix, crate=crate.local_name, name=ctype)
+                ptr=ptr_prefix, crate=crate.local_name, name=ctype)
 
         if nullable:
             # Callbacks need special treatment: C function pointer fields
@@ -791,38 +803,41 @@ class RawMapper(object):
     def _map_array(self, array, actual_ctype):
         if array.array_type == ast.Array.C:
             if array.size is None:
-                (rust_ptr, element_ctype) = _unwrap_pointer_ctype(actual_ctype)
-                return (rust_ptr +
-                        self._map_type(array.element_type, element_ctype))
+                rust_ptr, element_ctype = _unwrap_pointer_ctype(actual_ctype)
+                rust_type = (
+                    rust_ptr +
+                    self._map_type(array.element_type, element_ctype))
             else:
-                return '[{elem_type}; {size}]'.format(
-                        elem_type=self._map_type(array.element_type),
-                        size=array.size)
+                rust_type = '[{elem_type}; {size}]'.format(
+                    elem_type=self._map_type(array.element_type),
+                    size=array.size)
         else:
-            (rust_ptr, array_ctype) = _unwrap_pointer_ctype(actual_ctype)
+            rust_ptr, array_ctype = _unwrap_pointer_ctype(actual_ctype)
             assert (array.array_type.startswith('GLib.')
                     and array_ctype.startswith('G')
                     and array.array_type[5:] == array_ctype[1:]), \
                     'the array GI type "{}" and C type "{}" do not match'.format(
                         array.array_type, array_ctype)
-            return (rust_ptr +
-                    self._map_introspected_type(array.array_type, array_ctype))
+            rust_type = (
+                rust_ptr +
+                self._map_introspected_type(array.array_type, array_ctype))
+        return rust_type
 
     def _map_list_type(self, typename, ctype):
-            (rust_ptr, item_ctype) = _unwrap_pointer_ctype(ctype)
-            assert (typename.startswith('GLib.')
-                    and item_ctype.startswith('G')
-                    and typename[5:] == item_ctype[1:]), \
-                    'the list GI type "{}" and C type "{}" do not match'.format(
-                        typename, item_ctype)
-            return (rust_ptr +
-                    self._map_introspected_type(typename, item_ctype))
+        rust_ptr, item_ctype = _unwrap_pointer_ctype(ctype)
+        assert (typename.startswith('GLib.')
+                and item_ctype.startswith('G')
+                and typename[5:] == item_ctype[1:]), \
+                'the list GI type "{}" and C type "{}" do not match'.format(
+                    typename, item_ctype)
+        return (rust_ptr +
+                self._map_introspected_type(typename, item_ctype))
 
     def _map_hash_table(self, ctype):
-            (rust_ptr, deref_ctype) = _unwrap_pointer_ctype(ctype)
-            assert deref_ctype == 'GHashTable'
-            return (rust_ptr +
-                    self._map_introspected_type('GLib.HashTable', deref_ctype))
+        rust_ptr, deref_ctype = _unwrap_pointer_ctype(ctype)
+        assert deref_ctype == 'GHashTable'
+        return (rust_ptr +
+                self._map_introspected_type('GLib.HashTable', deref_ctype))
 
     def map_aliased_type(self, alias):
         """Return the Rust FFI type for the target type of an alias.
@@ -859,7 +874,7 @@ class RawMapper(object):
         assert isinstance(field, ast.Field)
         if field.bits is not None:
             raise MappingError(
-                    'cannot represent bit field {}'.format(field.name))
+                'cannot represent bit field {}'.format(field.name))
         # Function pointers in structure fields are always considered
         # nullable. So we pass down the nullable flag both when the field
         # type is a name reference and when it's an anonymous callback.
@@ -918,7 +933,4 @@ class RawMapper(object):
         syntax = 'extern "C" fn ({})'.format(', '.join(param_list))
         if callback.retval.type != ast.TYPE_NONE:
             syntax += ' -> {}'.format(self.map_return_type(callback.retval))
-        if nullable:
-            return 'Option<{}>'.format(syntax)
-        else:
-            return syntax
+        return 'Option<{}>'.format(syntax) if nullable else syntax
