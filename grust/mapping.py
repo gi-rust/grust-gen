@@ -451,6 +451,9 @@ class Module(object):
                              or name_func(node) not in match_list)]
         return mod_nodes, remainder
 
+def _is_typed_pointer_ctype(ctype):
+    return ctype.endswith('*')
+
 _ptr_const_patterns = (
     re.compile(r'^(?P<deref_type>.*[^ ]) +const *\*$'),
     re.compile(r'^const +(?P<deref_type>.*[^* ]) *\*$')
@@ -498,11 +501,10 @@ def _unwrap_call_signature_ctype(type_container):
             raise MappingError(message)
     return prefix, _strip_volatile(ctype)
 
-def _is_fixed_size_array(typedesc):
+def _is_c_array(typedesc):
     return (
         isinstance(typedesc, ast.Array)
         and typedesc.array_type == ast.Array.C
-        and typedesc.size is not None
     )
 
 class RawMapper(object):
@@ -642,7 +644,8 @@ class RawMapper(object):
         return self._resolve_type_internal(type_container.type, actual_ctype)
 
     def _resolve_type_internal(self, typedesc, actual_ctype):
-        if actual_ctype in ffi_basic_types:
+        if (actual_ctype in ffi_basic_types
+                and not _is_c_array(typedesc)):
             return set()
 
         if isinstance(typedesc, ast.Array):
@@ -674,7 +677,9 @@ class RawMapper(object):
 
     def _resolve_array(self, typedesc, actual_ctype):
         if typedesc.array_type == ast.Array.C:
-            if typedesc.size is None:
+            if actual_ctype in ('gpointer', 'gconstpointer'):
+                return set()
+            if typedesc.size is None and _is_typed_pointer_ctype(actual_ctype):
                 element_ctype = _unwrap_pointer_ctype(actual_ctype)[1]
             else:
                 element_ctype = typedesc.element_type.ctype
@@ -715,20 +720,25 @@ class RawMapper(object):
                 nqname, crate.namespace.name)
         return (crate, nqname)
 
-    def _map_type(self, typedesc, actual_ctype=None, nullable=False):
+    def _map_type(self, typedesc,
+                  actual_ctype=None, nullable=False, derive_ptr_prefix=None):
         if actual_ctype is None and typedesc.ctype is not None:
             actual_ctype = _strip_volatile(typedesc.ctype)
-        assert actual_ctype or typedesc.target_giname, 'C type not found for {!r}'.format(typedesc)
+        assert (
+            actual_ctype
+            or typedesc.target_giname
+            or typedesc.target_fundamental
+        ), 'C type not found for {!r}'.format(typedesc)
 
         if (actual_ctype in ffi_basic_types
-                and not _is_fixed_size_array(typedesc)):
+                and not _is_c_array(typedesc)):
             # If the C type for anything is usable directly in FFI,
-            # that's all we need. The C type is bogus on fixed-size arrays
-            # though, see gobject-introspection bug 756122.
+            # that's all we need. The C type may be bogus on C arrays
+            # though, see gobject-introspection bugs 756122 and 792275.
             return ffi_basic_types[actual_ctype]
 
         if isinstance(typedesc, ast.Array):
-            return self._map_array(typedesc, actual_ctype)
+            return self._map_array(typedesc, actual_ctype, derive_ptr_prefix)
         elif isinstance(typedesc, ast.List):
             return self._map_list_type(typedesc.name, actual_ctype)
         elif isinstance(typedesc, ast.Map):
@@ -774,7 +784,7 @@ class RawMapper(object):
             # one when an output parameter lacks annotation, which is
             # always the case with callbacks.
             for _ in range(2):
-                if ctype.endswith('*'):
+                if _is_typed_pointer_ctype(ctype):
                     (ptr_layer, ctype) = _unwrap_pointer_ctype(ctype)
                     ptr_prefix += ptr_layer
                 else:
@@ -800,13 +810,30 @@ class RawMapper(object):
                 return 'Option<{}>'.format(syntax)
         return syntax
 
-    def _map_array(self, array, actual_ctype):
+    def _map_array(self, array, actual_ctype, derive_ptr_prefix=None):
         if array.array_type == ast.Array.C:
             if array.size is None:
-                rust_ptr, element_ctype = _unwrap_pointer_ctype(actual_ctype)
-                rust_type = (
-                    rust_ptr +
-                    self._map_type(array.element_type, element_ctype))
+                if _is_typed_pointer_ctype(actual_ctype):
+                    rust_ptr, element_ctype = _unwrap_pointer_ctype(actual_ctype)
+                    rust_type = (
+                        rust_ptr +
+                        self._map_type(array.element_type, element_ctype))
+                elif actual_ctype in ('gpointer', 'gconstpointer'):
+                    rust_type = actual_ctype
+                else:
+                    # g-ir-scanner must have gotten the c:type wrong,
+                    # see gobject-introspection bug 792275.
+                    # Derive the pointer layer from the element type
+                    # if the caller allows it.
+                    if not derive_ptr_prefix:
+                        raise MappingError(
+                            ('C type "{}" is expected to be a pointer to' +
+                             ' array element type {}'
+                            ).format(actual_ctype, array.element_type))
+                    element_ctype = array.element_type.ctype
+                    rust_type = (
+                        derive_ptr_prefix +
+                        self._map_type(array.element_type, element_ctype))
             else:
                 rust_type = '[{elem_type}; {size}]'.format(
                     elem_type=self._map_type(array.element_type),
@@ -897,7 +924,8 @@ class RawMapper(object):
         ptr_prefix, actual_ctype = _unwrap_call_signature_ctype(parameter)
         return (ptr_prefix +
                 self._map_type(parameter.type, actual_ctype,
-                               nullable=parameter.nullable))
+                               nullable=parameter.nullable,
+                               derive_ptr_prefix='*const '))
 
     def map_gerror_parameter_type(self):
         """Return the Rust FFI type syntax for the **GError parameter.
